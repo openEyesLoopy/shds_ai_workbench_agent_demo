@@ -1,0 +1,9 @@
+{
+  "permissions": {
+    "allow": [
+      "Read(//c/Users/monte/AppData/Local/Temp/claude/c--Users-monte-Documents-workspace-AI-workbench-Agent/174f4561-bce9-4dca-8a2a-dd364ec8fb31/scratchpad/pwtest/**)",
+      "Bash(npx playwright *)",
+      "Bash(taskkill //PID 25452 //F)"
+    ]
+  }
+}
