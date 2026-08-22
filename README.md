@@ -2,7 +2,7 @@
 
 기획서를 업로드하면 AI(Claude / Gemini / ChatGPT 중 선택)가 요구사항을 분석하고, 대상 저장소
 ([shds-demo-project-workbench](https://github.com/moonctp24/shds-demo-project-workbench))의
-코드를 자동 생성하여 `test` 브랜치에 반영하고, 승인 시 `PROD` 브랜치로 최종 반영하는
+코드를 자동 생성하여 `test` 브랜치에 반영하고, 승인 시 `main` 브랜치로 최종 반영하는
 워크벤치입니다.
 
 ## 준비
@@ -43,7 +43,7 @@ http://localhost:3000 에서 기획서를 업로드하면:
    다시 스캔합니다 — 실제 커밋 여부를 가르는 최종 게이트는 LLM의 자기 보고가 아니라 이
    결정론적 스캔 + 모든 테스트 PASS 여부입니다. 통과 시에만 `test` 브랜치에 커밋됩니다.
 4. "테스트뷰어 확인"은 설정된 목업 Agent URL을 iframe으로 보여줍니다.
-5. "최종확정"을 클릭하면 `PROD` 브랜치를 `test` 브랜치의 현재 상태로 갱신합니다
+5. "최종확정"을 클릭하면 `main` 브랜치를 `test` 브랜치의 현재 상태로 갱신합니다
    (`test` 브랜치는 삭제되지 않고 계속 유지됩니다).
 
 QA 모듈은 실제로 `npm audit`/`mvn test`/SonarQube를 실행하지 않습니다(서버에 Node/Java

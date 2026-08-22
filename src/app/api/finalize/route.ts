@@ -6,12 +6,12 @@ import type { FinalizeResult } from "@/lib/types";
 export async function POST() {
   try {
     const settings = await getSettings();
-    const sha = await promoteBranch(settings.githubOwner, settings.githubRepo, "test", "PROD");
+    const sha = await promoteBranch(settings.githubOwner, settings.githubRepo, "test", "main");
 
     const result: FinalizeResult = {
       ok: true,
       commitSha: sha,
-      branch: "PROD",
+      branch: "main",
       repoUrl: repoCommitUrl(settings.githubOwner, settings.githubRepo, sha),
     };
     return NextResponse.json(result);

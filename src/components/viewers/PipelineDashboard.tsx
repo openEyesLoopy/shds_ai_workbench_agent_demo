@@ -48,7 +48,7 @@ export default function PipelineDashboard({
         <RefreshCw className="animate-spin-slow" size={26} />
         <p className="text-sm font-semibold text-white">CI/CD 파이프라인 실행 중...</p>
         <p className="text-xs text-gray-500">
-          test 브랜치 소스를 운영(PROD) 브랜치로 반영하고 있습니다.
+          test 브랜치 소스를 운영(main) 브랜치로 반영하고 있습니다.
         </p>
       </div>
     );

@@ -155,7 +155,7 @@ export default function Home() {
                 <button
                   type="button"
                   onClick={handleFinalizeClick}
-                  title={uploadResult.ok ? undefined : "차단된 사유를 확인합니다 (PROD에는 반영되지 않습니다)"}
+                  title={uploadResult.ok ? undefined : "차단된 사유를 확인합니다 (main에는 반영되지 않습니다)"}
                   className="rounded-lg bg-gray-900 px-3 py-1.5 text-xs font-medium text-white hover:bg-gray-800"
                 >
                   {uploadResult.ok ? "최종확정" : "차단 사유 확인"}
