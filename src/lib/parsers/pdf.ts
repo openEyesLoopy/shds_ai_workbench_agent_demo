@@ -1,3 +1,4 @@
+import "./domPolyfill";
 import { PDFParse } from "pdf-parse";
 
 export async function parsePdf(buffer: Buffer): Promise<string> {

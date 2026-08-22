@@ -12,6 +12,7 @@
     "@anthropic-ai/sdk": "^0.120.0",
     "@google/genai": "^2.18.0",
     "@octokit/rest": "^22.0.1",
+    "@thednp/dommatrix": "^3.1.1",
     "clsx": "^2.1.1",
     "exceljs": "^4.4.0",
     "jszip": "^3.10.1",
