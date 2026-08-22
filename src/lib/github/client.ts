@@ -104,14 +104,15 @@ export async function listSourceFiles(
     .filter((entry) => entry.type === "blob" && entry.path && isSourcePath(entry.path))
     .map((entry) => entry.path as string);
 
-  const files: SourceFile[] = [];
-  for (const path of filePaths) {
-    const { data } = await client.repos.getContent({ owner, repo, path, ref });
-    if (Array.isArray(data) || data.type !== "file" || !data.content) continue;
-    const content = Buffer.from(data.content, "base64").toString("utf-8");
-    files.push({ path, content });
-  }
-  return files;
+  const fetched = await Promise.all(
+    filePaths.map(async (path) => {
+      const { data } = await client.repos.getContent({ owner, repo, path, ref });
+      if (Array.isArray(data) || data.type !== "file" || !data.content) return null;
+      const content = Buffer.from(data.content, "base64").toString("utf-8");
+      return { path, content };
+    })
+  );
+  return fetched.filter((f): f is SourceFile => f !== null);
 }
 
 interface CommitFilesResult {

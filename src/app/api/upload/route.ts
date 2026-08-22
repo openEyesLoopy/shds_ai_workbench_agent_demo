@@ -13,7 +13,7 @@ import { runSast } from "@/lib/sast/scan";
 import { computeResourceStats } from "@/lib/resourceStats";
 import type { DiffEntry, FileChange, QaAuditResult, UploadResult } from "@/lib/types";
 
-export const maxDuration = 60;
+export const maxDuration = 300;
 
 const MAX_FILE_BYTES = 10 * 1024 * 1024;
 
