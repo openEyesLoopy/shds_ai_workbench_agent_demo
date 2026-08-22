@@ -134,3 +134,11 @@ export interface FinalizeResult {
   branch: string;
   repoUrl: string;
 }
+
+/** Result of resetting `test` back to whatever `main` currently points at. */
+export interface ResetResult {
+  ok: boolean;
+  commitSha: string;
+  branch: string;
+  repoUrl: string;
+}

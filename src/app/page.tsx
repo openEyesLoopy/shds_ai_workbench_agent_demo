@@ -11,7 +11,7 @@ import LeftInfoPanel from "@/components/panels/LeftInfoPanel";
 import CodeDiffViewer from "@/components/viewers/CodeDiffViewer";
 import MockupViewer from "@/components/viewers/MockupViewer";
 import PipelineDashboard from "@/components/viewers/PipelineDashboard";
-import type { FinalizeResult, UploadResult } from "@/lib/types";
+import type { FinalizeResult, ResetResult, UploadResult } from "@/lib/types";
 
 type AppState = "idle" | "analyzing" | "workspace";
 
@@ -28,6 +28,7 @@ export default function Home() {
   const [uploadResult, setUploadResult] = useState<UploadResult | null>(null);
   const [isFinalizing, setIsFinalizing] = useState(false);
   const [finalizeResult, setFinalizeResult] = useState<FinalizeResult | null>(null);
+  const [isResetting, setIsResetting] = useState(false);
 
   const hasResult = uploadResult !== null;
 
@@ -83,6 +84,30 @@ export default function Home() {
       setUploadError(err instanceof Error ? err.message : "최종 반영 중 오류가 발생했습니다.");
     } finally {
       setIsFinalizing(false);
+    }
+  }
+
+  async function handleReset() {
+    if (
+      !window.confirm(
+        "test 브랜치를 현재 main 브랜치 상태로 되돌립니다. 지금까지 반영된 AI 변경사항은 사라집니다. 계속할까요?"
+      )
+    ) {
+      return;
+    }
+    setIsResetting(true);
+    try {
+      const res = await fetch("/api/reset", { method: "POST" });
+      const data: ResetResult | { error: string } = await res.json();
+      if (!res.ok) throw new Error("error" in data ? data.error : "초기화 중 오류가 발생했습니다.");
+      setAppState("idle");
+      setUploadResult(null);
+      setFinalizeResult(null);
+      setUploadError(null);
+    } catch (err) {
+      setUploadError(err instanceof Error ? err.message : "초기화 중 오류가 발생했습니다.");
+    } finally {
+      setIsResetting(false);
     }
   }
 
@@ -145,6 +170,17 @@ export default function Home() {
             actions={
               <>
                 <EngineToggle compact />
+                {!finalizeResult && (
+                  <button
+                    type="button"
+                    onClick={handleReset}
+                    disabled={isResetting}
+                    title="test 브랜치를 현재 main 브랜치 상태로 되돌립니다"
+                    className="rounded-lg border border-red-200 px-3 py-1.5 text-xs font-medium text-red-600 hover:bg-red-50 disabled:opacity-50"
+                  >
+                    {isResetting ? "초기화 중..." : "초기화"}
+                  </button>
+                )}
                 <button
                   type="button"
                   onClick={() => setWorkspaceStep(3)}
@@ -155,8 +191,9 @@ export default function Home() {
                 <button
                   type="button"
                   onClick={handleFinalizeClick}
+                  disabled={isResetting}
                   title={uploadResult.ok ? undefined : "차단된 사유를 확인합니다 (main에는 반영되지 않습니다)"}
-                  className="rounded-lg bg-gray-900 px-3 py-1.5 text-xs font-medium text-white hover:bg-gray-800"
+                  className="rounded-lg bg-gray-900 px-3 py-1.5 text-xs font-medium text-white hover:bg-gray-800 disabled:opacity-50"
                 >
                   {uploadResult.ok ? "최종확정" : "차단 사유 확인"}
                 </button>
