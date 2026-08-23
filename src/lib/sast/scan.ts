@@ -25,11 +25,11 @@ const XSS_PATTERNS: Pattern[] = [
 const SQL_INJECTION_PATTERNS: Pattern[] = [
   {
     label: "문자열 결합 기반 SQL 쿼리 (SELECT/INSERT/UPDATE/DELETE + 연결 연산자)",
-    regex: /(SELECT|INSERT|UPDATE|DELETE)[^;"'`]*["'`]\s*\+/i,
+    regex: /\b(SELECT|INSERT|UPDATE|DELETE)\b[^;"'`]*["'`]\s*\+/i,
   },
   {
     label: "템플릿 리터럴에 변수를 직접 삽입한 SQL 쿼리",
-    regex: /`[^`]*(SELECT|INSERT|UPDATE|DELETE)[^`]*\$\{[^}]+\}[^`]*`/i,
+    regex: /`[^`]*\b(SELECT|INSERT|UPDATE|DELETE)\b[^`]*\$\{[^}]+\}[^`]*`/i,
   },
   {
     label: "JDBC Statement(문자열 결합)로 실행되는 쿼리 — PreparedStatement 권장",

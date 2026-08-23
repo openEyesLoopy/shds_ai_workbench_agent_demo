@@ -43,6 +43,7 @@ export const QaAuditSchema = z.object({
   }),
   automated_tests: z.array(QaAutomatedTestSchema),
   security_fixes: z.array(QaSecurityFixSchema),
+  fix_summary: z.string(),
   fixed_files: z.array(GeneratedFileSchema),
   test_files: z.array(GeneratedFileSchema),
 });

@@ -47,7 +47,7 @@ export class GeminiProvider implements LlmProvider {
   async runQaAudit(input: QaAuditInput): Promise<QaAuditOutput> {
     const response = await client().models.generateContent({
       model: MODEL,
-      contents: buildQaUserPrompt(input.files),
+      contents: buildQaUserPrompt(input.files, input.previousFailures),
       config: {
         systemInstruction: QA_SYSTEM_PROMPT,
         responseMimeType: "application/json",

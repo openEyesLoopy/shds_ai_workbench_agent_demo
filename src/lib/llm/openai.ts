@@ -39,7 +39,7 @@ export class OpenAiProvider implements LlmProvider {
     const response = await client().responses.parse({
       model: MODEL,
       instructions: QA_SYSTEM_PROMPT,
-      input: buildQaUserPrompt(input.files),
+      input: buildQaUserPrompt(input.files, input.previousFailures),
       text: { format: zodTextFormat(QaAuditSchema, "qa_audit") },
     });
     if (!response.output_parsed) {

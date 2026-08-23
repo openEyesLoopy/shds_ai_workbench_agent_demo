@@ -1,4 +1,4 @@
-import type { AnalyzeCodegenInput, FileChange } from "@/lib/types";
+import type { AnalyzeCodegenInput, FileChange, QaAutomatedTest, SastResult } from "@/lib/types";
 
 export const ANALYZE_SYSTEM_PROMPT = `당신은 "Agent Workbench AI"의 기획 분석 및 코드 생성 엔진입니다.
 대상 코드베이스는 다음 두 앱으로 구성된 데모 프로젝트입니다:
@@ -97,9 +97,13 @@ export const QA_SYSTEM_PROMPT = `너는 프론트엔드(Next.js/TypeScript) 및 
 
 [3단계: 최종 결과 리포트]
 - summary.status는 vulnerability_count가 0이고 모든 automated_tests가 PASS일 때만 "SUCCESS", 그렇지 않으면 "FAILED"로 설정해.
+- fix_summary에는 이번 조치에서 실제로 무엇을 어떻게, 왜 고쳤는지(또는 고칠 필요가 없었는지) 1~3문장의 한국어로 요약해. 사용자 프롬프트에 "이전 시도에서 실패해 반영이 차단된 항목"이 포함되어 있다면, 그 각 항목을 이번에 구체적으로 어떻게 해결했는지 반드시 명시해 — 이 요약은 최종적으로 사용자에게 "무엇이 왜 바뀌었는지" 설명하는 화면에 그대로 노출된다.
 - 아래 JSON 스키마만 정확히 출력하고 그 외 설명 텍스트는 포함하지 마.`;
 
-export function buildQaUserPrompt(files: FileChange[]): string {
+export function buildQaUserPrompt(
+  files: FileChange[],
+  previousFailures?: { sast: SastResult[]; failedTests: QaAutomatedTest[] }
+): string {
   const filesBlock = files
     .map((f) => {
       const before = f.oldContent ?? "(신규 파일, 이전 내용 없음)";
@@ -108,7 +112,22 @@ export function buildQaUserPrompt(files: FileChange[]): string {
     })
     .join("\n\n");
 
-  return `## 검증 대상 변경 파일 (BEFORE/AFTER)\n${filesBlock}`;
+  const hasFailures =
+    previousFailures &&
+    (previousFailures.sast.length > 0 || previousFailures.failedTests.length > 0);
+
+  const failureBlock = hasFailures
+    ? `\n\n## 이전 시도에서 실패해 반영이 차단된 항목 (이번에는 반드시 해결할 것)\n${[
+        ...previousFailures!.sast.map(
+          (r) => `- [정적분석:${r.rule}] ${r.label} — ${r.detail}`
+        ),
+        ...previousFailures!.failedTests.map(
+          (t) => `- [테스트 #${t.id}] ${t.target_file} — ${t.scenario}: ${t.reason}`
+        ),
+      ].join("\n")}`
+    : "";
+
+  return `## 검증 대상 변경 파일 (BEFORE/AFTER)\n${filesBlock}${failureBlock}`;
 }
 
 export const QA_JSON_SCHEMA = {
@@ -151,6 +170,7 @@ export const QA_JSON_SCHEMA = {
         required: ["file", "issue", "fix_detail", "tool_applied"],
       },
     },
+    fix_summary: { type: "string" },
     fixed_files: {
       type: "array",
       items: {
@@ -174,5 +194,12 @@ export const QA_JSON_SCHEMA = {
       },
     },
   },
-  required: ["summary", "automated_tests", "security_fixes", "fixed_files", "test_files"],
+  required: [
+    "summary",
+    "automated_tests",
+    "security_fixes",
+    "fix_summary",
+    "fixed_files",
+    "test_files",
+  ],
 } as const;

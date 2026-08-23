@@ -16,6 +16,9 @@ interface PipelineDashboardProps {
   sast: SastResult[];
   qa: QaAuditResult;
   resource: ResourceStats;
+  onFix?: () => void;
+  isFixing?: boolean;
+  fixError?: string | null;
 }
 
 function StatTag({ delta, unit }: { delta: number; unit: string }) {
@@ -41,6 +44,9 @@ export default function PipelineDashboard({
   sast,
   qa,
   resource,
+  onFix,
+  isFixing,
+  fixError,
 }: PipelineDashboardProps) {
   if (canFinalize && (isFinalizing || !finalizeResult)) {
     return (
@@ -61,43 +67,77 @@ export default function PipelineDashboard({
   return (
     <div className="flex flex-col gap-4 p-4">
       {canFinalize && finalizeResult ? (
-        <div className="flex flex-wrap items-center justify-between gap-3 rounded-xl border border-emerald-200 bg-emerald-50 p-4">
-          <div className="flex items-center gap-3">
-            <CheckCircle2 className="text-emerald-500" size={22} />
-            <div>
-              <p className="text-sm font-semibold text-gray-900">운영 브랜치 반영 완료</p>
-              <p className="mt-0.5 flex flex-wrap items-center gap-x-3 gap-y-0.5 text-xs text-gray-500">
-                <span className="inline-flex items-center gap-1">
-                  <GitCommitHorizontal size={12} /> {finalizeResult.commitSha.slice(0, 7)}
-                </span>
-                <span className="inline-flex items-center gap-1">
-                  <GitBranch size={12} /> {finalizeResult.branch} branch
-                </span>
-                <span>방금 전 배포됨</span>
-              </p>
+        <div className="flex flex-col gap-3 rounded-xl border border-emerald-200 bg-emerald-50 p-4">
+          <div className="flex flex-wrap items-center justify-between gap-3">
+            <div className="flex items-center gap-3">
+              <CheckCircle2 className="text-emerald-500" size={22} />
+              <div>
+                <p className="text-sm font-semibold text-gray-900">운영 브랜치 반영 완료</p>
+                <p className="mt-0.5 flex flex-wrap items-center gap-x-3 gap-y-0.5 text-xs text-gray-500">
+                  <span className="inline-flex items-center gap-1">
+                    <GitCommitHorizontal size={12} /> {finalizeResult.commitSha.slice(0, 7)}
+                  </span>
+                  <span className="inline-flex items-center gap-1">
+                    <GitBranch size={12} /> {finalizeResult.branch} branch
+                  </span>
+                  <span>방금 전 배포됨</span>
+                </p>
+              </div>
             </div>
+            <a
+              href={finalizeResult.repoUrl}
+              target="_blank"
+              rel="noreferrer"
+              className="rounded-lg bg-gray-900 px-3 py-1.5 text-xs font-medium text-white hover:bg-gray-800"
+            >
+              GitHub에서 보기
+            </a>
           </div>
-          <a
-            href={finalizeResult.repoUrl}
-            target="_blank"
-            rel="noreferrer"
-            className="rounded-lg bg-gray-900 px-3 py-1.5 text-xs font-medium text-white hover:bg-gray-800"
-          >
-            GitHub에서 보기
-          </a>
+          {qa.fix_summary && (
+            <div className="rounded-lg border border-emerald-200 bg-white p-3">
+              <p className="mb-1 text-xs font-semibold text-gray-700">
+                QA 모듈이 무엇을, 왜 수정했는지
+              </p>
+              <p className="text-xs text-gray-600">{qa.fix_summary}</p>
+              {qa.security_fixes.length > 0 && (
+                <ul className="mt-2 flex flex-col gap-1.5 border-t border-gray-100 pt-2">
+                  {qa.security_fixes.map((fix, i) => (
+                    <li key={i} className="text-[11px] text-gray-500">
+                      <span className="font-medium text-gray-700">{fix.file}</span> — {fix.issue}:{" "}
+                      {fix.fix_detail}
+                    </li>
+                  ))}
+                </ul>
+              )}
+            </div>
+          )}
         </div>
       ) : (
         <div className="rounded-xl border border-red-200 bg-red-50 p-4">
-          <div className="flex items-center gap-3">
-            <XCircle className="text-red-500" size={22} />
-            <div>
-              <p className="text-sm font-semibold text-gray-900">최종 반영이 차단되었습니다</p>
-              <p className="mt-0.5 text-xs text-gray-500">
-                아래 SAST/QA 결과 중 FAILED 항목이 원인입니다. test 브랜치에는 아무것도
-                반영되지 않았습니다.
-              </p>
+          <div className="flex flex-wrap items-center justify-between gap-3">
+            <div className="flex items-center gap-3">
+              <XCircle className="text-red-500" size={22} />
+              <div>
+                <p className="text-sm font-semibold text-gray-900">최종 반영이 차단되었습니다</p>
+                <p className="mt-0.5 text-xs text-gray-500">
+                  아래 SAST/QA 결과 중 FAILED 항목이 원인입니다. test 브랜치에는 아무것도
+                  반영되지 않았습니다.
+                </p>
+              </div>
             </div>
+            {onFix && (
+              <button
+                type="button"
+                onClick={onFix}
+                disabled={isFixing}
+                className="inline-flex shrink-0 items-center gap-1.5 rounded-lg bg-red-600 px-3 py-1.5 text-xs font-medium text-white hover:bg-red-700 disabled:opacity-50"
+              >
+                <RefreshCw size={12} className={isFixing ? "animate-spin-slow" : undefined} />
+                {isFixing ? "FAILED 항목 자동 수정 중..." : "FAILED 항목 자동 수정"}
+              </button>
+            )}
           </div>
+          {fixError && <p className="mt-2 text-xs text-red-600">{fixError}</p>}
         </div>
       )}
 

@@ -29,6 +29,8 @@ export default function Home() {
   const [isFinalizing, setIsFinalizing] = useState(false);
   const [finalizeResult, setFinalizeResult] = useState<FinalizeResult | null>(null);
   const [isResetting, setIsResetting] = useState(false);
+  const [isFixing, setIsFixing] = useState(false);
+  const [fixError, setFixError] = useState<string | null>(null);
 
   const hasResult = uploadResult !== null;
 
@@ -47,6 +49,7 @@ export default function Home() {
 
   async function handleFileSelected(file: File) {
     setUploadError(null);
+    setFixError(null);
     setAppState("analyzing");
     setFinalizeResult(null);
 
@@ -84,6 +87,42 @@ export default function Home() {
       setUploadError(err instanceof Error ? err.message : "최종 반영 중 오류가 발생했습니다.");
     } finally {
       setIsFinalizing(false);
+    }
+  }
+
+  async function handleFix() {
+    if (!uploadResult) return;
+    const failedSast = uploadResult.sast.filter((r) => !r.passed);
+    const failedTests = uploadResult.qa.automated_tests.filter((t) => t.result !== "PASS");
+    if (failedSast.length === 0 && failedTests.length === 0) return;
+
+    setIsFixing(true);
+    setFixError(null);
+    try {
+      const res = await fetch("/api/fix", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          planFileName: uploadResult.planFileName,
+          asIs: uploadResult.asIs,
+          toBe: uploadResult.toBe,
+          diffs: uploadResult.diffs,
+          files: uploadResult.files,
+          failedSast,
+          failedTests,
+        }),
+      });
+      const data = await res.json();
+      if (!res.ok) throw new Error(data.error ?? "자동 수정 중 오류가 발생했습니다.");
+      const fixed = data as UploadResult;
+      setUploadResult(fixed);
+      // Already on the pipeline (step 4) when a fix succeeds — mirror what
+      // handleFinalizeClick does when first arriving there with a passing result.
+      if (fixed.ok) void runFinalize();
+    } catch (err) {
+      setFixError(err instanceof Error ? err.message : "자동 수정 중 오류가 발생했습니다.");
+    } finally {
+      setIsFixing(false);
     }
   }
 
@@ -212,6 +251,9 @@ export default function Home() {
                 sast={uploadResult.sast}
                 qa={uploadResult.qa}
                 resource={uploadResult.resource}
+                onFix={handleFix}
+                isFixing={isFixing}
+                fixError={fixError}
               />
             )}
           </WorkspaceLayout>

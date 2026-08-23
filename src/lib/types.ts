@@ -49,6 +49,11 @@ export interface SastResult {
 /** Independent QA & security review of a generated diff — see lib/llm/prompts.ts QA_SYSTEM_PROMPT. */
 export interface QaAuditInput {
   files: FileChange[];
+  /** When retrying after a blocked finalize, the exact items that must be resolved this time. */
+  previousFailures?: {
+    sast: SastResult[];
+    failedTests: QaAutomatedTest[];
+  };
 }
 
 export interface QaAutomatedTest {
@@ -76,6 +81,8 @@ export interface QaAuditOutput {
   };
   automated_tests: QaAutomatedTest[];
   security_fixes: QaSecurityFix[];
+  /** 1-3 sentence Korean summary of what was changed this pass, and why (or why nothing needed fixing). */
+  fix_summary: string;
   /** Full corrected content for files where a vulnerability was found and patched. */
   fixed_files: GeneratedFile[];
   /** Newly authored Jest / JUnit5+Mockito test files to add to the commit. */
@@ -96,6 +103,7 @@ export interface QaAuditResult {
   };
   automated_tests: QaAutomatedTest[];
   security_fixes: QaSecurityFix[];
+  fix_summary: string;
 }
 
 export interface WorkbenchSettings {

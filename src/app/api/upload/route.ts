@@ -11,41 +11,12 @@ import {
 import { getLlmProvider } from "@/lib/llm";
 import { runSast } from "@/lib/sast/scan";
 import { computeResourceStats } from "@/lib/resourceStats";
-import type { DiffEntry, FileChange, QaAuditResult, UploadResult } from "@/lib/types";
+import { applyQaOutput } from "@/lib/qa/applyQaOutput";
+import type { FileChange, QaAuditResult, UploadResult } from "@/lib/types";
 
 export const maxDuration = 300;
 
 const MAX_FILE_BYTES = 10 * 1024 * 1024;
-
-function frameworkForPath(path: string): string {
-  if (path.endsWith(".java")) return "JUnit 5 & Mockito";
-  return "Jest";
-}
-
-/** Applies the QA module's fixed_files onto the diff, and appends its test_files as new ADD entries. */
-function applyQaOutput(
-  fileChanges: FileChange[],
-  diffs: DiffEntry[],
-  qa: { fixed_files: { path: string; content: string | null }[]; test_files: { path: string; content: string | null }[] }
-): { files: FileChange[]; diffs: DiffEntry[] } {
-  const files = fileChanges.map((change) => {
-    const fix = qa.fixed_files.find((f) => f.path === change.path);
-    return fix ? { ...change, newContent: fix.content } : change;
-  });
-
-  const nextDiffs = [...diffs];
-  for (const testFile of qa.test_files) {
-    files.push({ path: testFile.path, oldContent: null, newContent: testFile.content });
-    nextDiffs.push({
-      type: "ADD",
-      path: testFile.path,
-      component: testFile.path.split("/").pop() ?? testFile.path,
-      description: `QA 모듈이 생성한 자동화 테스트 코드 (${frameworkForPath(testFile.path)})`,
-    });
-  }
-
-  return { files, diffs: nextDiffs };
-}
 
 export async function POST(request: NextRequest) {
   try {
@@ -109,6 +80,7 @@ export async function POST(request: NextRequest) {
         summary: { status: "FAILED", test_progress: "0개 시나리오 중 0개 자동화 완료 (0/0)", vulnerability_count: 0 },
         automated_tests: [],
         security_fixes: [],
+        fix_summary: "",
       };
       const result: UploadResult = {
         ok: false,
@@ -148,6 +120,7 @@ export async function POST(request: NextRequest) {
       },
       automated_tests: qaOutput.automated_tests,
       security_fixes: qaOutput.security_fixes,
+      fix_summary: qaOutput.fix_summary,
     };
 
     const resource = computeResourceStats(baselineFiles, fileChanges);
