@@ -12,11 +12,14 @@ const DEFAULTS: WorkbenchSettings = {
   mockupUrl: "",
   githubOwner: "",
   githubRepo: "",
+  prodGithubOwner: "",
+  prodGithubRepo: "",
 };
 
 export default function SettingsPage() {
   const [settings, setSettings] = useState<WorkbenchSettings>(DEFAULTS);
   const [repoUrlInput, setRepoUrlInput] = useState("");
+  const [prodRepoUrlInput, setProdRepoUrlInput] = useState("");
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
   const [saved, setSaved] = useState(false);
@@ -28,6 +31,7 @@ export default function SettingsPage() {
       .then((data: WorkbenchSettings) => {
         setSettings(data);
         setRepoUrlInput(toRepoUrl(data.githubOwner, data.githubRepo));
+        setProdRepoUrlInput(toRepoUrl(data.prodGithubOwner, data.prodGithubRepo));
       })
       .finally(() => setLoading(false));
   }, []);
@@ -44,6 +48,7 @@ export default function SettingsPage() {
           llmProvider: settings.llmProvider,
           mockupUrl: settings.mockupUrl,
           repoUrl: repoUrlInput,
+          prodRepoUrl: prodRepoUrlInput,
         }),
       });
       const data = await res.json();
@@ -53,6 +58,7 @@ export default function SettingsPage() {
       }
       setSettings(data);
       setRepoUrlInput(toRepoUrl(data.githubOwner, data.githubRepo));
+      setProdRepoUrlInput(toRepoUrl(data.prodGithubOwner, data.prodGithubRepo));
       setSaved(true);
     } finally {
       setSaving(false);
@@ -119,7 +125,9 @@ export default function SettingsPage() {
       </section>
 
       <section className="rounded-xl border border-panel-border bg-panel p-5">
-        <h2 className="mb-3 text-sm font-semibold text-gray-800">GitHub 대상 저장소</h2>
+        <h2 className="mb-3 text-sm font-semibold text-gray-800">
+          테스트 GitHub 저장소 — 테스트반영 (test 브랜치)
+        </h2>
         <input
           type="text"
           value={repoUrlInput}
@@ -130,6 +138,24 @@ export default function SettingsPage() {
         <p className="mt-2 text-xs text-gray-400">
           전체 GitHub 주소(예: https://github.com/owner/repo) 또는 owner/repo 형식으로 입력하세요.
           GITHUB_TOKEN(.env.local)이 이 저장소에 대한 쓰기 권한을 가지고 있어야 합니다.
+        </p>
+      </section>
+
+      <section className="rounded-xl border border-panel-border bg-panel p-5">
+        <h2 className="mb-3 text-sm font-semibold text-gray-800">
+          운영 GitHub 저장소 — 운영반영 (main 브랜치)
+        </h2>
+        <input
+          type="text"
+          value={prodRepoUrlInput}
+          onChange={(e) => setProdRepoUrlInput(e.target.value)}
+          placeholder="https://github.com/owner/repo"
+          className="w-full rounded-lg border border-panel-border px-3 py-2 text-sm outline-none focus:border-gray-400"
+        />
+        <p className="mt-2 text-xs text-gray-400">
+          테스트 저장소와 별도의 운영 저장소입니다. 운영반영 클릭 시 이 저장소의 main
+          브랜치로 직접 커밋됩니다. GITHUB_TOKEN이 이 저장소에도 쓰기 권한을 가지고 있어야
+          합니다.
         </p>
         {saveError && <p className="mt-2 text-xs font-medium text-red-600">{saveError}</p>}
       </section>

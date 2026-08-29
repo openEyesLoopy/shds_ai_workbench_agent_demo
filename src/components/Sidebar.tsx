@@ -1,7 +1,7 @@
 "use client";
 
 import { useState } from "react";
-import { Upload, Code2, Eye, GitBranch, Check, Settings } from "lucide-react";
+import { Upload, Code2, GitBranch, Rocket, Check, Settings } from "lucide-react";
 import Link from "next/link";
 import clsx from "clsx";
 
@@ -11,11 +11,14 @@ export interface SidebarStep {
   icon: typeof Upload;
 }
 
+// 테스트뷰어 is no longer its own step — it's a tab inside the 테스트반영
+// dashboard (step 3) now, alongside AI 시나리오 테스트 / 코드 비교. 운영반영
+// (step 4) is its own separate screen from 테스트반영 (step 3).
 const STEPS: SidebarStep[] = [
   { step: 1, label: "기획서 업로드", icon: Upload },
-  { step: 2, label: "코드 및 UI 분석", icon: Code2 },
-  { step: 3, label: "테스트 뷰어", icon: Eye },
-  { step: 4, label: "최종 반영", icon: GitBranch },
+  { step: 2, label: "요구사항 분석", icon: Code2 },
+  { step: 3, label: "테스트반영", icon: GitBranch },
+  { step: 4, label: "최종 반영(운영반영)", icon: Rocket },
 ];
 
 interface SidebarProps {

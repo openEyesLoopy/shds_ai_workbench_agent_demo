@@ -1,4 +1,10 @@
-import type { AnalyzeCodegenInput, FileChange, QaAutomatedTest, SastResult } from "@/lib/types";
+import type {
+  AnalyzeCodegenInput,
+  BusinessDiagramInput,
+  FileChange,
+  QaAutomatedTest,
+  SastResult,
+} from "@/lib/types";
 
 export const ANALYZE_SYSTEM_PROMPT = `당신은 "Agent Workbench AI"의 기획 분석 및 코드 생성 엔진입니다.
 대상 코드베이스는 다음 두 앱으로 구성된 데모 프로젝트입니다:
@@ -202,4 +208,41 @@ export const QA_JSON_SCHEMA = {
     "fixed_files",
     "test_files",
   ],
+} as const;
+
+// ---------------------------------------------------------------------------
+// "업무 비즈니스 요약" diagram — Mermaid flowchart of the business logic flow
+// ---------------------------------------------------------------------------
+// Runs against the exact files just committed to `test` (post QA-fix), once
+// 테스트반영 completes, so the diagram always reflects the test 브랜치 source.
+
+export const BUSINESS_DIAGRAM_SYSTEM_PROMPT = `당신은 코드 변경사항을 읽고 "업무/비즈니스 로직 단위" 흐름을 Mermaid.js 다이어그램으로 시각화하는 엔진입니다.
+대상은 방금 test 브랜치에 반영된 최종 소스 코드(AFTER 상태)입니다 — 코드의 구현 세부사항이 아니라 "사용자 행동 → 화면 처리 → API 호출 → 서버 처리 → 응답/화면 반영"으로 이어지는 업무 흐름 단위로 추상화해서 그리세요.
+
+규칙:
+- 반드시 유효한 Mermaid.js "flowchart TD" (또는 flowchart LR) 문법만 사용하세요. sequenceDiagram, classDiagram 등 다른 다이어그램 종류는 사용하지 마세요.
+- 노드 id는 영문/숫자로만 구성하고(예: A, B1, ui1), 노드에 표시할 한국어 라벨은 대괄호 안에 큰따옴표로 감싸세요. 예: A["사용자 정보 조회 버튼 클릭"]
+- 라벨 문자열에는 큰따옴표를 중첩해서 쓰지 마세요. 콜론(:), 괄호처럼 Mermaid 파싱을 깨뜨릴 수 있는 특수문자는 라벨 안에서 피하세요.
+- 화면(프론트엔드) 노드, API/컨트롤러(백엔드) 노드, 데이터/응답 모델 노드를 구분되게 배치하고, subgraph로 "프론트엔드"/"백엔드" 영역을 나눠도 좋습니다.
+- 실제로 변경되거나 관련된 파일/화면/엔드포인트 단위로만 노드를 구성하세요 — 존재하지 않는 임의의 컴포넌트를 지어내지 마세요.
+- 5~12개 정도의 노드로, 한눈에 파악 가능한 수준으로 간결하게 구성하세요.
+- summary 필드에는 이 다이어그램이 보여주는 업무 흐름을 1~3문장의 한국어로 요약하세요.
+- 아래 JSON 스키마만 정확히 출력하고 그 외 설명 텍스트는 포함하지 마세요.`;
+
+export function buildBusinessDiagramUserPrompt(input: BusinessDiagramInput): string {
+  const filesBlock = input.files
+    .filter((f) => f.newContent !== null)
+    .map((f) => `### ${f.path}\n\`\`\`\n${f.newContent}\n\`\`\``)
+    .join("\n\n");
+
+  return `## AS-IS\n${input.asIs}\n\n## TO-BE\n${input.toBe}\n\n## test 브랜치에 반영된 최종 소스 코드 (AFTER)\n${filesBlock}`;
+}
+
+export const BUSINESS_DIAGRAM_JSON_SCHEMA = {
+  type: "object",
+  properties: {
+    mermaid: { type: "string" },
+    summary: { type: "string" },
+  },
+  required: ["mermaid", "summary"],
 } as const;

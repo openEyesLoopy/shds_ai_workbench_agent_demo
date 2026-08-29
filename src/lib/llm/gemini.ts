@@ -2,6 +2,8 @@ import { GoogleGenAI } from "@google/genai";
 import type {
   AnalyzeCodegenInput,
   AnalyzeCodegenOutput,
+  BusinessDiagramInput,
+  BusinessDiagramOutput,
   LlmProvider,
   QaAuditInput,
   QaAuditOutput,
@@ -9,9 +11,12 @@ import type {
 import {
   ANALYZE_JSON_SCHEMA,
   ANALYZE_SYSTEM_PROMPT,
+  BUSINESS_DIAGRAM_JSON_SCHEMA,
+  BUSINESS_DIAGRAM_SYSTEM_PROMPT,
   QA_JSON_SCHEMA,
   QA_SYSTEM_PROMPT,
   buildAnalyzeUserPrompt,
+  buildBusinessDiagramUserPrompt,
   buildQaUserPrompt,
 } from "./prompts";
 
@@ -55,5 +60,18 @@ export class GeminiProvider implements LlmProvider {
       },
     });
     return JSON.parse(extractJsonText(response.text)) as QaAuditOutput;
+  }
+
+  async generateBusinessDiagram(input: BusinessDiagramInput): Promise<BusinessDiagramOutput> {
+    const response = await client().models.generateContent({
+      model: MODEL,
+      contents: buildBusinessDiagramUserPrompt(input),
+      config: {
+        systemInstruction: BUSINESS_DIAGRAM_SYSTEM_PROMPT,
+        responseMimeType: "application/json",
+        responseJsonSchema: BUSINESS_DIAGRAM_JSON_SCHEMA,
+      },
+    });
+    return JSON.parse(extractJsonText(response.text)) as BusinessDiagramOutput;
   }
 }

@@ -17,6 +17,7 @@
     "exceljs": "^4.4.0",
     "jszip": "^3.10.1",
     "lucide-react": "^1.33.0",
+    "mermaid": "^11.17.2",
     "next": "16.3.2",
     "openai": "^7.5.0",
     "pdf-parse": "^2.4.5",

@@ -5,7 +5,8 @@ interface WorkspaceLayoutProps {
   headerTitle: string;
   versionBadge?: { from: string; to: string };
   actions?: ReactNode;
-  leftPanel: ReactNode;
+  /** Omit for screens (e.g. the post-테스트반영 dashboard) that have their own internal layout instead. */
+  leftPanel?: ReactNode;
   children: ReactNode;
 }
 
@@ -19,9 +20,11 @@ export default function WorkspaceLayout({
 }: WorkspaceLayoutProps) {
   return (
     <div className="flex h-full w-full flex-col gap-4 overflow-y-auto p-4 md:flex-row md:overflow-hidden md:p-4">
-      <aside className="w-full shrink-0 overflow-y-auto rounded-xl border border-panel-border bg-panel p-4 md:h-full md:w-[30%] md:max-w-sm">
-        {leftPanel}
-      </aside>
+      {leftPanel && (
+        <aside className="w-full shrink-0 overflow-y-auto rounded-xl border border-panel-border bg-panel p-4 md:h-full md:w-[30%] md:max-w-sm">
+          {leftPanel}
+        </aside>
+      )}
 
       <section className="flex min-h-[420px] w-full flex-1 flex-col overflow-hidden rounded-xl border border-panel-border bg-panel">
         <header className="flex flex-wrap items-center justify-between gap-3 border-b border-panel-border px-4 py-3">

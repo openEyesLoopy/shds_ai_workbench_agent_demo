@@ -2,22 +2,24 @@ import { NextRequest, NextResponse } from "next/server";
 import { parsePlanDocument } from "@/lib/parsers";
 import { getSettings } from "@/lib/store/settingsStore";
 import {
-  commitFiles,
   getTestAheadCount,
   listSourceFiles,
   repoTreeUrl,
   resolveBaselineBranch,
 } from "@/lib/github/client";
 import { getLlmProvider } from "@/lib/llm";
-import { runSast } from "@/lib/sast/scan";
-import { computeResourceStats } from "@/lib/resourceStats";
-import { applyQaOutput } from "@/lib/qa/applyQaOutput";
-import type { FileChange, QaAuditResult, UploadResult } from "@/lib/types";
+import type { FileChange, UploadResult } from "@/lib/types";
 
 export const maxDuration = 300;
 
 const MAX_FILE_BYTES = 10 * 1024 * 1024;
 
+/**
+ * Analyzes the uploaded plan document and generates the code diff — nothing
+ * more. No QA/SAST gate runs here, and nothing is committed: those only
+ * happen once the user reviews this on the 요구사항 분석 screen and clicks
+ * 테스트반영 (see /api/test-reflect).
+ */
 export async function POST(request: NextRequest) {
   try {
     const form = await request.formData();
@@ -70,92 +72,25 @@ export async function POST(request: NextRequest) {
 
     // The version badge is derived from how far `test` already sits ahead of
     // `main` on GitHub — the actual source of truth — rather than a separately
-    // persisted counter.
+    // persisted counter. This is just a preview label; the real version used
+    // in the commit message is computed the same way again in /api/test-reflect.
     const aheadBy = await getTestAheadCount(settings.githubOwner, settings.githubRepo);
     const fromVersion = `1.${aheadBy}`;
     const baselinePaths = baselineFiles.map((f) => f.path);
 
-    if (generatedChanges.length === 0) {
-      const emptyQa: QaAuditResult = {
-        summary: { status: "FAILED", test_progress: "0개 시나리오 중 0개 자동화 완료 (0/0)", vulnerability_count: 0 },
-        automated_tests: [],
-        security_fixes: [],
-        fix_summary: "",
-      };
-      const result: UploadResult = {
-        ok: false,
-        blockedReason: "기획서에서 반영할 코드 변경 사항을 찾지 못했습니다.",
-        planFileName: file.name,
-        version: { from: fromVersion, to: fromVersion },
-        asIs: analysis.asIs,
-        toBe: analysis.toBe,
-        diffs: analysis.diffs,
-        files: generatedChanges,
-        baselinePaths,
-        qa: emptyQa,
-        sast: [],
-        resource: computeResourceStats(baselineFiles, generatedChanges),
-      };
-      return NextResponse.json(result);
-    }
-
-    // Independent QA & security module — reviews the diff on its own terms,
-    // patches vulnerabilities it finds, and writes real Jest/JUnit test code.
-    const qaOutput = await provider.runQaAudit({ files: generatedChanges });
-    const { files: fileChanges, diffs } = applyQaOutput(generatedChanges, analysis.diffs, qaOutput);
-
-    // Deterministic re-scan of the QA module's own output — the actual gate,
-    // not just the LLM's self-reported vulnerability_count.
-    const sast = runSast(fileChanges);
-    const sastPassed = sast.every((r) => r.passed);
-    const testsPassed = qaOutput.automated_tests.every((t) => t.result === "PASS");
-    const passed = sastPassed && testsPassed;
-    const vulnerabilityCount = sast.filter((r) => !r.passed).length;
-
-    const qa: QaAuditResult = {
-      summary: {
-        status: passed ? "SUCCESS" : "FAILED",
-        test_progress: qaOutput.summary.test_progress,
-        vulnerability_count: vulnerabilityCount,
-      },
-      automated_tests: qaOutput.automated_tests,
-      security_fixes: qaOutput.security_fixes,
-      fix_summary: qaOutput.fix_summary,
-    };
-
-    const resource = computeResourceStats(baselineFiles, fileChanges);
-
-    let commit: UploadResult["commit"];
-    let versionTo = fromVersion;
-
-    if (passed) {
-      versionTo = `1.${aheadBy + 1}`;
-      const commitResult = await commitFiles(
-        settings.githubOwner,
-        settings.githubRepo,
-        "test",
-        fileChanges,
-        `AI 분석 반영: ${file.name} (v${fromVersion} → v${versionTo})`
-      );
-      commit = { sha: commitResult.sha, branch: "test" };
-    }
-
     const result: UploadResult = {
-      ok: passed,
-      blockedReason: passed
-        ? undefined
-        : "독립 QA 모듈의 보안 점검 또는 자동화 테스트를 통과하지 못해 test 브랜치 반영이 차단되었습니다.",
+      ok: generatedChanges.length > 0,
+      blockedReason:
+        generatedChanges.length > 0
+          ? undefined
+          : "기획서에서 반영할 코드 변경 사항을 찾지 못했습니다.",
       planFileName: file.name,
-      version: { from: fromVersion, to: versionTo },
+      version: { from: fromVersion, to: `1.${aheadBy + 1}` },
       asIs: analysis.asIs,
       toBe: analysis.toBe,
-      diffs,
-      files: fileChanges,
+      diffs: analysis.diffs,
+      files: generatedChanges,
       baselinePaths,
-      qa,
-      sast,
-      resource,
-      commit,
     };
 
     return NextResponse.json(result);

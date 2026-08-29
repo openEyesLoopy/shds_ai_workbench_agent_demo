@@ -41,6 +41,22 @@ export async function PATCH(request: NextRequest) {
     if (typeof body.githubRepo === "string") patch.githubRepo = body.githubRepo.trim();
   }
 
+  // Same pattern for the separate production repo that 운영반영 commits to.
+  if (typeof body.prodRepoUrl === "string" && body.prodRepoUrl.trim()) {
+    const parsed = parseRepoUrl(body.prodRepoUrl);
+    if (!parsed) {
+      return NextResponse.json(
+        { error: "운영 GitHub 저장소 주소 형식이 올바르지 않습니다. 예: https://github.com/owner/repo" },
+        { status: 400 }
+      );
+    }
+    patch.prodGithubOwner = parsed.owner;
+    patch.prodGithubRepo = parsed.repo;
+  } else {
+    if (typeof body.prodGithubOwner === "string") patch.prodGithubOwner = body.prodGithubOwner.trim();
+    if (typeof body.prodGithubRepo === "string") patch.prodGithubRepo = body.prodGithubRepo.trim();
+  }
+
   const updated = await updateSettings(patch);
   return NextResponse.json(updated);
 }

@@ -47,3 +47,8 @@ export const QaAuditSchema = z.object({
   fixed_files: z.array(GeneratedFileSchema),
   test_files: z.array(GeneratedFileSchema),
 });
+
+export const BusinessDiagramSchema = z.object({
+  mermaid: z.string(),
+  summary: z.string(),
+});

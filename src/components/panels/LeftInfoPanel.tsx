@@ -1,26 +1,16 @@
 import { FileText } from "lucide-react";
-import clsx from "clsx";
-import type { DiffEntry } from "@/lib/types";
 
 interface LeftInfoPanelProps {
   planFileName: string;
   asIs: string;
   toBe: string;
-  diffs: DiffEntry[];
   blockedReason?: string;
 }
-
-const BADGE_STYLES: Record<DiffEntry["type"], string> = {
-  ADD: "bg-emerald-100 text-emerald-700",
-  MODIFY: "bg-amber-100 text-amber-700",
-  DELETE: "bg-red-100 text-red-700",
-};
 
 export default function LeftInfoPanel({
   planFileName,
   asIs,
   toBe,
-  diffs,
   blockedReason,
 }: LeftInfoPanelProps) {
   return (
@@ -59,31 +49,6 @@ export default function LeftInfoPanel({
             </span>
             <p className="text-gray-600">{toBe}</p>
           </div>
-        </div>
-      </div>
-
-      <div>
-        <p className="mb-2 text-xs font-semibold text-gray-400">분석 상세 내용 (DIFF)</p>
-        <div className="flex flex-col gap-2">
-          {diffs.map((diff, i) => (
-            <div key={i} className="rounded-lg border border-panel-border p-2.5">
-              <div className="mb-1 flex items-center gap-2">
-                <span
-                  className={clsx(
-                    "rounded px-1.5 py-0.5 text-[10px] font-bold",
-                    BADGE_STYLES[diff.type]
-                  )}
-                >
-                  {diff.type}
-                </span>
-                <span className="text-xs font-medium text-gray-500">{diff.component}</span>
-              </div>
-              <p className="text-xs text-gray-600">{diff.description}</p>
-            </div>
-          ))}
-          {diffs.length === 0 && (
-            <p className="text-xs text-gray-400">변경 사항이 없습니다.</p>
-          )}
         </div>
       </div>
     </div>

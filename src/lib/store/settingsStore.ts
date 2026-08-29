@@ -14,9 +14,11 @@ function defaultLlmProvider(): LlmProviderName {
 function defaultSettings(): WorkbenchSettings {
   return {
     llmProvider: defaultLlmProvider(),
-    mockupUrl: "",
+    mockupUrl: process.env.MOCKUP_URL ?? "https://shds-demo-project-workbench-test.vercel.app/",
     githubOwner: process.env.GITHUB_OWNER ?? "moonctp24",
     githubRepo: process.env.GITHUB_REPO ?? "shds-demo-project-workbench",
+    prodGithubOwner: process.env.PROD_GITHUB_OWNER ?? "openEyesLoopy",
+    prodGithubRepo: process.env.PROD_GITHUB_REPO ?? "shds-demo-project-workbench_PROD",
   };
 }
 
