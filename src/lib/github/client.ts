@@ -120,6 +120,24 @@ interface CommitFilesResult {
   branchCreated: boolean;
 }
 
+// GitHub's Git Data API occasionally throws this right after a burst of
+// createBlob calls, before the blobs have fully replicated on GitHub's end —
+// a documented eventual-consistency quirk, not a real conflict. Re-running
+// the whole blob→tree→commit→ref sequence a couple of times, with a short
+// backoff, resolves it almost every time.
+const TRANSIENT_COMMIT_ERROR_PATTERN = /BadObjectState/i;
+const COMMIT_RETRY_ATTEMPTS = 3;
+const COMMIT_RETRY_BASE_DELAY_MS = 1500;
+
+function isTransientCommitError(err: unknown): boolean {
+  const message = err instanceof Error ? err.message : String(err);
+  return TRANSIENT_COMMIT_ERROR_PATTERN.test(message);
+}
+
+function sleep(ms: number): Promise<void> {
+  return new Promise((resolve) => setTimeout(resolve, ms));
+}
+
 /**
  * Commits the given file changes onto `branch`, creating it from `main` first
  * if it doesn't exist yet. Uses the Git Data API directly (blobs/tree/commit/ref)
@@ -149,51 +167,82 @@ export async function commitFiles(
     branchCreated = true;
   }
 
-  const { data: baseCommit } = await client.git.getCommit({
-    owner,
-    repo,
-    commit_sha: branchSha,
-  });
-
-  const treeEntries = await Promise.all(
-    files.map(async (file) => {
-      if (file.newContent === null) {
-        return { path: file.path, mode: "100644" as const, type: "blob" as const, sha: null };
-      }
-      const { data: blob } = await client.git.createBlob({
+  let lastError: unknown;
+  for (let attempt = 1; attempt <= COMMIT_RETRY_ATTEMPTS; attempt++) {
+    try {
+      const { data: baseCommit } = await client.git.getCommit({
         owner,
         repo,
-        content: file.newContent,
-        encoding: "utf-8",
+        commit_sha: branchSha,
       });
-      return { path: file.path, mode: "100644" as const, type: "blob" as const, sha: blob.sha };
-    })
-  );
 
-  const { data: newTree } = await client.git.createTree({
-    owner,
-    repo,
-    base_tree: baseCommit.tree.sha,
-    tree: treeEntries,
-  });
+      // Sequential on purpose — firing all createBlob calls concurrently via
+      // Promise.all was suspected of triggering GitHub's git-data eventual
+      // consistency lag (the source of the BadObjectState errors this retry
+      // loop is guarding against) under a burst of simultaneous writes to the
+      // same repo.
+      const treeEntries: { path: string; mode: "100644"; type: "blob"; sha: string | null }[] = [];
+      for (const file of files) {
+        if (file.newContent === null) {
+          treeEntries.push({ path: file.path, mode: "100644", type: "blob", sha: null });
+          continue;
+        }
+        const { data: blob } = await client.git.createBlob({
+          owner,
+          repo,
+          content: file.newContent,
+          encoding: "utf-8",
+        });
+        treeEntries.push({ path: file.path, mode: "100644", type: "blob", sha: blob.sha });
+      }
 
-  const { data: newCommit } = await client.git.createCommit({
-    owner,
-    repo,
-    message,
-    tree: newTree.sha,
-    parents: [branchSha],
-  });
+      const { data: newTree } = await client.git.createTree({
+        owner,
+        repo,
+        base_tree: baseCommit.tree.sha,
+        tree: treeEntries,
+      });
 
-  await client.git.updateRef({
-    owner,
-    repo,
-    ref: `heads/${branch}`,
-    sha: newCommit.sha,
-    force: false,
-  });
+      const { data: newCommit } = await client.git.createCommit({
+        owner,
+        repo,
+        message,
+        tree: newTree.sha,
+        parents: [branchSha],
+      });
 
-  return { sha: newCommit.sha, branchCreated };
+      await client.git.updateRef({
+        owner,
+        repo,
+        ref: `heads/${branch}`,
+        sha: newCommit.sha,
+        force: false,
+      });
+
+      return { sha: newCommit.sha, branchCreated };
+    } catch (err) {
+      lastError = err;
+      // Full diagnostic dump on every failure (not just the final one) so a
+      // recurrence is traceable from the server log instead of just the bare
+      // "message - docs_url" string the UI shows — that string alone wasn't
+      // enough to root-cause the BadObjectState reports.
+      const status = (err as { status?: number }).status;
+      const responseData = (err as { response?: { data?: unknown } }).response?.data;
+      console.error(
+        `[commitFiles] attempt ${attempt}/${COMMIT_RETRY_ATTEMPTS} failed for ${owner}/${repo}@${branch}`,
+        `status=${status}`,
+        `files=${files.map((f) => f.path).join(", ")}`,
+        `response=${JSON.stringify(responseData)}`,
+        err
+      );
+      if (attempt >= COMMIT_RETRY_ATTEMPTS || !isTransientCommitError(err)) {
+        throw err;
+      }
+      await sleep(COMMIT_RETRY_BASE_DELAY_MS * attempt);
+    }
+  }
+
+  throw lastError;
 }
 
 /**

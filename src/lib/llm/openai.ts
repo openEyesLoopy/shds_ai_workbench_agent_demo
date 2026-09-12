@@ -18,17 +18,20 @@ import {
   buildQaUserPrompt,
 } from "./prompts";
 import { AnalyzeCodegenSchema, BusinessDiagramSchema, QaAuditSchema } from "./schemas";
+import { OPENAI_MODEL_OPTIONS, defaultModelId } from "./models";
 
-const MODEL = process.env.OPENAI_MODEL ?? "gpt-5.5";
+const DEFAULT_MODEL = process.env.OPENAI_MODEL ?? defaultModelId(OPENAI_MODEL_OPTIONS);
 
 function client(): OpenAI {
   return new OpenAI();
 }
 
 export class OpenAiProvider implements LlmProvider {
+  constructor(private readonly model: string = DEFAULT_MODEL) {}
+
   async analyzeAndGenerate(input: AnalyzeCodegenInput): Promise<AnalyzeCodegenOutput> {
     const response = await client().responses.parse({
-      model: MODEL,
+      model: this.model,
       instructions: ANALYZE_SYSTEM_PROMPT,
       input: buildAnalyzeUserPrompt(input),
       text: { format: zodTextFormat(AnalyzeCodegenSchema, "analyze_codegen") },
@@ -41,7 +44,7 @@ export class OpenAiProvider implements LlmProvider {
 
   async runQaAudit(input: QaAuditInput): Promise<QaAuditOutput> {
     const response = await client().responses.parse({
-      model: MODEL,
+      model: this.model,
       instructions: QA_SYSTEM_PROMPT,
       input: buildQaUserPrompt(input.files, input.previousFailures),
       text: { format: zodTextFormat(QaAuditSchema, "qa_audit") },
@@ -54,7 +57,7 @@ export class OpenAiProvider implements LlmProvider {
 
   async generateBusinessDiagram(input: BusinessDiagramInput): Promise<BusinessDiagramOutput> {
     const response = await client().responses.parse({
-      model: MODEL,
+      model: this.model,
       instructions: BUSINESS_DIAGRAM_SYSTEM_PROMPT,
       input: buildBusinessDiagramUserPrompt(input),
       text: { format: zodTextFormat(BusinessDiagramSchema, "business_diagram") },

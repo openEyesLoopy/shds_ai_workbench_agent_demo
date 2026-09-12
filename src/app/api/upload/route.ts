@@ -55,7 +55,7 @@ export async function POST(request: NextRequest) {
       baselineBranch
     );
 
-    const provider = getLlmProvider(settings.llmProvider);
+    const provider = getLlmProvider(settings.llmProvider, settings);
     const analysis = await provider.analyzeAndGenerate({
       planText,
       planFileName: file.name,
@@ -88,6 +88,7 @@ export async function POST(request: NextRequest) {
       version: { from: fromVersion, to: `1.${aheadBy + 1}` },
       asIs: analysis.asIs,
       toBe: analysis.toBe,
+      menuTree: analysis.menuTree,
       diffs: analysis.diffs,
       files: generatedChanges,
       baselinePaths,

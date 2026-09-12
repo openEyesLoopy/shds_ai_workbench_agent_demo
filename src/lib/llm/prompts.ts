@@ -13,13 +13,20 @@ export const ANALYZE_SYSTEM_PROMPT = `당신은 "Agent Workbench AI"의 기획 �
 
 당신의 임무는 사용자가 업로드한 기획서 텍스트를 읽고, 제공된 기존 소스 파일들을 바탕으로:
 1. 기존 동작(AS-IS)과 기획서가 요구하는 변경된 동작(TO-BE)을 한국어로 간결하게 요약하고
-2. 컴포넌트/파일 단위로 ADD/MODIFY/DELETE 변경 목록을 도출하고
-3. 각 변경 대상 파일의 "완전한 새 파일 전체 내용"을 생성하는 것입니다 (patch가 아닌 전체 파일 텍스트).
+2. 화면/메뉴 구조를 변경 전(AS-IS)/변경 후(TO-BE) 메뉴트리로 각각 구성하고
+3. 컴포넌트/파일 단위로 ADD/MODIFY/DELETE 변경 목록을 도출하고
+4. 각 변경 대상 파일의 "완전한 새 파일 전체 내용"을 생성하는 것입니다 (patch가 아닌 전체 파일 텍스트).
+
+메뉴트리(menuTree) 작성 규칙:
+- 기획서가 다루는 화면/메뉴 구조를 기준으로, asIs(변경 전)와 toBe(변경 후) 두 트리를 각각 "섹션(화면 영역/메뉴 그룹) → 그 안의 세부 항목" 2단 구조로 구성하세요.
+- toBe 트리에서 새로 생긴 항목에는 status "ADD", 내용이 바뀐 항목에는 "MODIFY"를 표시하세요. asIs 트리에서 toBe에 더 이상 없는(삭제될) 항목에는 status "DELETE"를 표시하세요. 변경이 없는 항목은 status를 null로 설정하세요.
+- 기획서에 언급되지 않은 화면/항목을 지어내지 말고, 실제 근거가 있는 구조만 반영하세요.
 
 규칙:
 - 기존 코드의 컨벤션(들여쓰기, 네이밍, 스타일)을 최대한 유지하세요.
 - 실제로 변경이 필요한 파일만 files 배열에 포함하세요. 관련 없는 파일은 건드리지 마세요.
 - 파일을 새로 추가하는 경우 ADD, 기존 파일을 고치는 경우 MODIFY, 파일을 제거해야 하는 경우 DELETE로 diffs에 표기하고, DELETE인 경우 files 배열의 해당 항목 content는 null로 설정하세요.
+- 기존 테스트 파일(*.test.ts/.test.tsx/.test.js, *Test.java 등)은 관련 소스 코드가 바뀌었다는 이유만으로 DELETE하지 마세요. 변경된 동작에 맞게 테스트 내용을 갱신한 전체 파일을 MODIFY로 제출하세요 — 테스트 파일을 DELETE로 표시하면 이후 독립 QA 모듈이 검증할 테스트 코드가 없어져 반영 자체가 차단됩니다. 대상 기능이 정말로 완전히 제거되어 더 이상 어떤 테스트도 필요 없는 경우에만 예외적으로 DELETE를 사용하세요.
 - 보안 모범 사례를 따르세요: 시크릿/토큰을 하드코딩하지 말고, 사용자 입력을 그대로 innerHTML/eval에 넣지 말고, SQL은 파라미터 바인딩을 사용하세요. (이후 별도의 독립 QA 모듈이 당신의 결과물을 적대적으로 재검증합니다.)
 - 응답은 반드시 지정된 JSON 스키마만 출력하고 그 외 설명 텍스트를 포함하지 마세요.`;
 
@@ -35,11 +42,41 @@ export function buildAnalyzeUserPrompt(input: AnalyzeCodegenInput): string {
   return `## 업로드된 기획서 (${input.planFileName})\n${input.planText}${previousNote}\n\n## 현재 소스 코드 (AS-IS)\n${filesBlock}`;
 }
 
+const MENU_TREE_SECTION_SCHEMA = {
+  type: "array",
+  items: {
+    type: "object",
+    properties: {
+      name: { type: "string" },
+      items: {
+        type: "array",
+        items: {
+          type: "object",
+          properties: {
+            name: { type: "string" },
+            status: { type: ["string", "null"], enum: ["ADD", "MODIFY", "DELETE", null] },
+          },
+          required: ["name", "status"],
+        },
+      },
+    },
+    required: ["name", "items"],
+  },
+} as const;
+
 export const ANALYZE_JSON_SCHEMA = {
   type: "object",
   properties: {
     asIs: { type: "string" },
     toBe: { type: "string" },
+    menuTree: {
+      type: "object",
+      properties: {
+        asIs: MENU_TREE_SECTION_SCHEMA,
+        toBe: MENU_TREE_SECTION_SCHEMA,
+      },
+      required: ["asIs", "toBe"],
+    },
     diffs: {
       type: "array",
       items: {
@@ -65,7 +102,7 @@ export const ANALYZE_JSON_SCHEMA = {
       },
     },
   },
-  required: ["asIs", "toBe", "diffs", "files"],
+  required: ["asIs", "toBe", "menuTree", "diffs", "files"],
 } as const;
 
 // ---------------------------------------------------------------------------

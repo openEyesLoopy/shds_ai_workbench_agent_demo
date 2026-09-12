@@ -48,7 +48,7 @@ export async function POST(request: NextRequest) {
     }
 
     const settings = await getSettings();
-    const provider = getLlmProvider(settings.llmProvider);
+    const provider = getLlmProvider(settings.llmProvider, settings);
 
     const baselineBranch = await resolveBaselineBranch(settings.githubOwner, settings.githubRepo);
     const baselineFiles = await listSourceFiles(
@@ -61,6 +61,7 @@ export async function POST(request: NextRequest) {
       provider,
       body.files,
       body.diffs,
+      baselineFiles,
       body.previousFailures
     );
     const resource = computeResourceStats(baselineFiles, fileChanges);

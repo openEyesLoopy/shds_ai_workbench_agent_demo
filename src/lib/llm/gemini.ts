@@ -19,8 +19,9 @@ import {
   buildBusinessDiagramUserPrompt,
   buildQaUserPrompt,
 } from "./prompts";
+import { GEMINI_MODEL_OPTIONS, defaultModelId } from "./models";
 
-const MODEL = process.env.GEMINI_MODEL ?? "gemini-3.1-pro-preview";
+const DEFAULT_MODEL = process.env.GEMINI_MODEL ?? defaultModelId(GEMINI_MODEL_OPTIONS);
 
 function client(): GoogleGenAI {
   const apiKey = process.env.GEMINI_API_KEY;
@@ -36,9 +37,11 @@ function extractJsonText(text: string | undefined): string {
 }
 
 export class GeminiProvider implements LlmProvider {
+  constructor(private readonly model: string = DEFAULT_MODEL) {}
+
   async analyzeAndGenerate(input: AnalyzeCodegenInput): Promise<AnalyzeCodegenOutput> {
     const response = await client().models.generateContent({
-      model: MODEL,
+      model: this.model,
       contents: buildAnalyzeUserPrompt(input),
       config: {
         systemInstruction: ANALYZE_SYSTEM_PROMPT,
@@ -51,7 +54,7 @@ export class GeminiProvider implements LlmProvider {
 
   async runQaAudit(input: QaAuditInput): Promise<QaAuditOutput> {
     const response = await client().models.generateContent({
-      model: MODEL,
+      model: this.model,
       contents: buildQaUserPrompt(input.files, input.previousFailures),
       config: {
         systemInstruction: QA_SYSTEM_PROMPT,
@@ -64,7 +67,7 @@ export class GeminiProvider implements LlmProvider {
 
   async generateBusinessDiagram(input: BusinessDiagramInput): Promise<BusinessDiagramOutput> {
     const response = await client().models.generateContent({
-      model: MODEL,
+      model: this.model,
       contents: buildBusinessDiagramUserPrompt(input),
       config: {
         systemInstruction: BUSINESS_DIAGRAM_SYSTEM_PROMPT,

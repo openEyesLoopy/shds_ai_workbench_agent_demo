@@ -4,16 +4,38 @@ import { useEffect, useState } from "react";
 import Link from "next/link";
 import { ArrowLeft, Check } from "lucide-react";
 import clsx from "clsx";
-import type { WorkbenchSettings } from "@/lib/types";
+import type { LlmProviderName, WorkbenchSettings } from "@/lib/types";
 import { toRepoUrl } from "@/lib/github/parseRepoUrl";
+import {
+  CLAUDE_MODEL_OPTIONS,
+  GEMINI_MODEL_OPTIONS,
+  OPENAI_MODEL_OPTIONS,
+  defaultModelId,
+  type ModelOption,
+} from "@/lib/llm/models";
 
 const DEFAULTS: WorkbenchSettings = {
   llmProvider: "claude",
+  claudeModel: defaultModelId(CLAUDE_MODEL_OPTIONS),
+  geminiModel: defaultModelId(GEMINI_MODEL_OPTIONS),
+  openaiModel: defaultModelId(OPENAI_MODEL_OPTIONS),
   mockupUrl: "",
   githubOwner: "",
   githubRepo: "",
   prodGithubOwner: "",
   prodGithubRepo: "",
+};
+
+const MODEL_SETTINGS_KEY = {
+  claude: "claudeModel",
+  gemini: "geminiModel",
+  openai: "openaiModel",
+} as const satisfies Record<LlmProviderName, keyof WorkbenchSettings>;
+
+const MODEL_OPTIONS_BY_PROVIDER: Record<LlmProviderName, ModelOption[]> = {
+  claude: CLAUDE_MODEL_OPTIONS,
+  gemini: GEMINI_MODEL_OPTIONS,
+  openai: OPENAI_MODEL_OPTIONS,
 };
 
 export default function SettingsPage() {
@@ -46,6 +68,9 @@ export default function SettingsPage() {
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
           llmProvider: settings.llmProvider,
+          claudeModel: settings.claudeModel,
+          geminiModel: settings.geminiModel,
+          openaiModel: settings.openaiModel,
           mockupUrl: settings.mockupUrl,
           repoUrl: repoUrlInput,
           prodRepoUrl: prodRepoUrlInput,
@@ -108,6 +133,35 @@ export default function SettingsPage() {
           API 키는 서버의 .env.local (ANTHROPIC_API_KEY / GEMINI_API_KEY / OPENAI_API_KEY)에서
           관리됩니다.
         </p>
+
+        <div className="mt-4 flex flex-col gap-3 border-t border-panel-border pt-4">
+          <p className="text-xs font-semibold text-gray-500">
+            제공자별 모델 버전 — 토큰 사용량/비용 조절용
+          </p>
+          {(["claude", "gemini", "openai"] as const).map((provider) => {
+            const settingsKey = MODEL_SETTINGS_KEY[provider];
+            return (
+              <div key={provider} className="flex items-center gap-3">
+                <span className="w-20 shrink-0 text-xs font-medium text-gray-600">
+                  {provider === "claude" ? "Claude" : provider === "gemini" ? "Gemini" : "ChatGPT"}
+                </span>
+                <select
+                  value={settings[settingsKey]}
+                  onChange={(e) =>
+                    setSettings((s) => ({ ...s, [settingsKey]: e.target.value }))
+                  }
+                  className="flex-1 rounded-lg border border-panel-border px-3 py-2 text-sm outline-none focus:border-gray-400"
+                >
+                  {MODEL_OPTIONS_BY_PROVIDER[provider].map((option) => (
+                    <option key={option.id} value={option.id}>
+                      {option.label}
+                    </option>
+                  ))}
+                </select>
+              </div>
+            );
+          })}
+        </div>
       </section>
 
       <section className="rounded-xl border border-panel-border bg-panel p-5">

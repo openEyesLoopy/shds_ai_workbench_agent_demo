@@ -18,17 +18,20 @@ import {
   buildQaUserPrompt,
 } from "./prompts";
 import { AnalyzeCodegenSchema, BusinessDiagramSchema, QaAuditSchema } from "./schemas";
+import { CLAUDE_MODEL_OPTIONS, defaultModelId } from "./models";
 
-const MODEL = process.env.ANTHROPIC_MODEL ?? "claude-opus-5";
+const DEFAULT_MODEL = process.env.ANTHROPIC_MODEL ?? defaultModelId(CLAUDE_MODEL_OPTIONS);
 
 function client(): Anthropic {
   return new Anthropic();
 }
 
 export class ClaudeProvider implements LlmProvider {
+  constructor(private readonly model: string = DEFAULT_MODEL) {}
+
   async analyzeAndGenerate(input: AnalyzeCodegenInput): Promise<AnalyzeCodegenOutput> {
     const response = await client().messages.parse({
-      model: MODEL,
+      model: this.model,
       max_tokens: 32000,
       system: ANALYZE_SYSTEM_PROMPT,
       messages: [{ role: "user", content: buildAnalyzeUserPrompt(input) }],
@@ -42,7 +45,7 @@ export class ClaudeProvider implements LlmProvider {
 
   async runQaAudit(input: QaAuditInput): Promise<QaAuditOutput> {
     const response = await client().messages.parse({
-      model: MODEL,
+      model: this.model,
       max_tokens: 32000,
       system: QA_SYSTEM_PROMPT,
       messages: [
@@ -58,7 +61,7 @@ export class ClaudeProvider implements LlmProvider {
 
   async generateBusinessDiagram(input: BusinessDiagramInput): Promise<BusinessDiagramOutput> {
     const response = await client().messages.parse({
-      model: MODEL,
+      model: this.model,
       max_tokens: 8000,
       system: BUSINESS_DIAGRAM_SYSTEM_PROMPT,
       messages: [{ role: "user", content: buildBusinessDiagramUserPrompt(input) }],

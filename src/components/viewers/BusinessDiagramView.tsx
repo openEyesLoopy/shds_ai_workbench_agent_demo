@@ -78,16 +78,22 @@ export default function BusinessDiagramView({ mermaidDefinition, summary }: Busi
         if (cancelled) return;
         if (containerRef.current) {
           containerRef.current.innerHTML = svg;
-          // Mermaid pins the SVG to a small intrinsic size via inline
+          // Mermaid pins the SVG to its natural computed size via inline
           // `style="max-width: ...px"` + a `height` attribute — neither is
-          // overridable by a CSS class (inline styles win), so drop them and
-          // let the SVG's own viewBox scale it up to fill the panel instead.
+          // overridable by a CSS class (inline styles win), so we replace them
+          // with inline styles of our own. Crucially this only ever shrinks
+          // the diagram to fit a narrower panel (max-width: 100%) — it never
+          // stretches it past its natural size, which for a small/simple
+          // diagram would blow every node up to fill the whole panel (the
+          // "one giant node" bug a naive `width: 100%` produces).
           const svgEl = containerRef.current.querySelector("svg");
           if (svgEl) {
             svgEl.style.removeProperty("max-width");
             svgEl.removeAttribute("height");
-            svgEl.setAttribute("width", "100%");
+            svgEl.removeAttribute("width");
+            svgEl.style.width = "auto";
             svgEl.style.height = "auto";
+            svgEl.style.maxWidth = "100%";
           }
         }
         setError(null);
@@ -125,7 +131,7 @@ export default function BusinessDiagramView({ mermaidDefinition, summary }: Busi
         </div>
       ) : (
         <div className="flex min-h-[480px] flex-1 items-center justify-center overflow-auto rounded-xl bg-gray-50/60 p-6">
-          <div ref={containerRef} className="w-full [&_svg]:w-full" />
+          <div ref={containerRef} className="flex w-full justify-center" />
         </div>
       )}
     </div>

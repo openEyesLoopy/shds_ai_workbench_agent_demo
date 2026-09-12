@@ -6,9 +6,11 @@ import type {
   QaAutomatedTest,
   QaSecurityFix,
   SastResult,
+  SourceFile,
 } from "@/lib/types";
 import { applyQaOutput } from "./applyQaOutput";
 import { runSast } from "@/lib/sast/scan";
+import { checkMavenCompile } from "./mavenCompileCheck";
 
 /** How many auto-fix rounds to run before giving up and surfacing a manual retry to the user. */
 const MAX_ATTEMPTS = 3;
@@ -38,6 +40,7 @@ export async function runQaGate(
   provider: LlmProvider,
   initialFiles: FileChange[],
   initialDiffs: DiffEntry[],
+  baselineFiles: SourceFile[],
   seedFailures?: { sast: SastResult[]; failedTests: QaAutomatedTest[] }
 ): Promise<QaGateResult> {
   let files = initialFiles;
@@ -57,6 +60,8 @@ export async function runQaGate(
     files = applied.files;
     diffs = applied.diffs;
     sast = runSast(files);
+    const mavenCheck = await checkMavenCompile(baselineFiles, files);
+    if (mavenCheck) sast.push(mavenCheck);
     automatedTests = qaOutput.automated_tests;
     testProgress = qaOutput.summary.test_progress;
     allSecurityFixes.push(...qaOutput.security_fixes);

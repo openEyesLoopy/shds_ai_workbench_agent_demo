@@ -12,9 +12,25 @@ export const GeneratedFileSchema = z.object({
   content: z.string().nullable(),
 });
 
+export const MenuTreeItemSchema = z.object({
+  name: z.string(),
+  status: z.enum(["ADD", "MODIFY", "DELETE"]).nullable(),
+});
+
+export const MenuTreeSectionSchema = z.object({
+  name: z.string(),
+  items: z.array(MenuTreeItemSchema),
+});
+
+export const MenuTreeSchema = z.object({
+  asIs: z.array(MenuTreeSectionSchema),
+  toBe: z.array(MenuTreeSectionSchema),
+});
+
 export const AnalyzeCodegenSchema = z.object({
   asIs: z.string(),
   toBe: z.string(),
+  menuTree: MenuTreeSchema,
   diffs: z.array(DiffEntrySchema),
   files: z.array(GeneratedFileSchema),
 });

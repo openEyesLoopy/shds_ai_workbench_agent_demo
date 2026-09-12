@@ -14,13 +14,13 @@ interface FinalizeRequestBody {
 }
 
 /**
- * "운영반영" — the production repo is a separate GitHub repository from the
- * `test` one (not just another branch of it), so this can't be a same-repo
- * ref move like the old test→main promotion. It commits the same
- * QA/SAST-passed files that were pushed to `test` straight onto the
- * production repo's `main` branch instead, then — same as /api/test-reflect —
- * only resolves once the production Vercel project's redeploy for this
- * commit is actually READY.
+ * "운영반영" — commits the same QA/SAST-passed files that were pushed to
+ * `test` straight onto the `main` branch of the production repo/branch
+ * configured in settings (prodGithubOwner/prodGithubRepo — this may be the
+ * very same repo as the test target, just a different branch, or a fully
+ * separate repo; commitFiles doesn't care either way). Then — same as
+ * /api/test-reflect — only resolves once the production Vercel project's
+ * redeploy for this commit is actually READY.
  */
 export async function POST(request: NextRequest) {
   try {

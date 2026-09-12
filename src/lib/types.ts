@@ -9,6 +9,24 @@ export interface DiffEntry {
   description: string;
 }
 
+/** A leaf menu/screen element within a MenuTreeSection. `status` is non-null only when it differs from the other side of the AS-IS/TO-BE pair. */
+export interface MenuTreeItem {
+  name: string;
+  status: DiffType | null;
+}
+
+/** A screen/menu grouping (e.g. "화면 상단") holding its child elements. */
+export interface MenuTreeSection {
+  name: string;
+  items: MenuTreeItem[];
+}
+
+/** Before/after menu-tree structure derived from the plan document, shown on the 요구사항 분석 screen in place of a free-text summary. */
+export interface MenuTree {
+  asIs: MenuTreeSection[];
+  toBe: MenuTreeSection[];
+}
+
 export interface GeneratedFile {
   path: string;
   content: string | null; // null = delete
@@ -35,6 +53,7 @@ export interface AnalyzeCodegenInput {
 export interface AnalyzeCodegenOutput {
   asIs: string;
   toBe: string;
+  menuTree: MenuTree;
   diffs: DiffEntry[];
   files: GeneratedFile[];
 }
@@ -123,6 +142,10 @@ export interface QaAuditResult {
 
 export interface WorkbenchSettings {
   llmProvider: LlmProviderName;
+  /** Selected model tier per provider — controls token usage/cost independent of which provider is active. */
+  claudeModel: string;
+  geminiModel: string;
+  openaiModel: string;
   mockupUrl: string;
   /** `test` branch target — where 테스트반영 commits AI-generated changes. */
   githubOwner: string;
@@ -153,6 +176,7 @@ export interface UploadResult {
   version: { from: string; to: string };
   asIs: string;
   toBe: string;
+  menuTree: MenuTree;
   diffs: DiffEntry[];
   files: FileChange[];
   baselinePaths: string[];

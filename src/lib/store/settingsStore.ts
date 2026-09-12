@@ -1,5 +1,11 @@
 import { cookies } from "next/headers";
 import type { LlmProviderName, WorkbenchSettings } from "@/lib/types";
+import {
+  CLAUDE_MODEL_OPTIONS,
+  GEMINI_MODEL_OPTIONS,
+  OPENAI_MODEL_OPTIONS,
+  defaultModelId,
+} from "@/lib/llm/models";
 
 const COOKIE_NAME = "workbench_settings";
 const COOKIE_MAX_AGE = 60 * 60 * 24 * 365; // 1 year
@@ -14,7 +20,10 @@ function defaultLlmProvider(): LlmProviderName {
 function defaultSettings(): WorkbenchSettings {
   return {
     llmProvider: defaultLlmProvider(),
-    mockupUrl: process.env.MOCKUP_URL ?? "https://shds-demo-project-workbench-test.vercel.app/",
+    claudeModel: process.env.ANTHROPIC_MODEL ?? defaultModelId(CLAUDE_MODEL_OPTIONS),
+    geminiModel: process.env.GEMINI_MODEL ?? defaultModelId(GEMINI_MODEL_OPTIONS),
+    openaiModel: process.env.OPENAI_MODEL ?? defaultModelId(OPENAI_MODEL_OPTIONS),
+    mockupUrl: process.env.MOCKUP_URL ?? "https://shds-demo-project-workbench-test-git-test-ds-mobile.vercel.app/",
     githubOwner: process.env.GITHUB_OWNER ?? "moonctp24",
     githubRepo: process.env.GITHUB_REPO ?? "shds-demo-project-workbench",
     prodGithubOwner: process.env.PROD_GITHUB_OWNER ?? "openEyesLoopy",

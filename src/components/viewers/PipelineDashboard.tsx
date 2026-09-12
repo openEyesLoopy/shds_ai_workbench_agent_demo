@@ -28,6 +28,9 @@ interface PipelineDashboardProps {
   onFix?: () => void;
   isFixing?: boolean;
   fixError?: string | null;
+  /** How many "FAILED 항목 자동 수정" rounds have fired automatically (without the user clicking) for the current blocked result, and the cap before it hands control back to the user. */
+  autoFixRound?: number;
+  maxAutoFixRounds?: number;
 
   /** Baseline file list for the "코드 비교" tree — the changed files themselves come from testReflectResult. */
   baselinePaths: string[];
@@ -103,8 +106,11 @@ export default function PipelineDashboard({
   onFix,
   isFixing,
   fixError,
+  autoFixRound = 0,
+  maxAutoFixRounds = 0,
   baselinePaths,
 }: PipelineDashboardProps) {
+  const autoFixExhausted = autoFixRound >= maxAutoFixRounds;
   const [activeTab, setActiveTab] = useState<DashboardTab>("scenario");
   const tabContentRef = useRef<HTMLDivElement>(null);
 
@@ -178,6 +184,16 @@ export default function PipelineDashboard({
                   {result.blockedReason ??
                     "아래 SAST/QA 결과 중 FAILED 항목이 원인입니다. test 브랜치에는 아무것도 반영되지 않았습니다."}
                 </p>
+                {!isFixing && !autoFixExhausted && maxAutoFixRounds > 0 && (
+                  <p className="mt-1 text-[11px] text-gray-400">
+                    자동으로 원인을 분석해 다시 시도합니다 ({autoFixRound}/{maxAutoFixRounds}회 완료)...
+                  </p>
+                )}
+                {autoFixExhausted && (
+                  <p className="mt-1 text-[11px] text-amber-600">
+                    자동 수정을 {maxAutoFixRounds}회 시도했지만 아직 해결되지 않았습니다. 필요하면 아래 버튼으로 계속 시도하거나, 기획서 내용을 조정해보세요.
+                  </p>
+                )}
               </div>
             </div>
             {onFix && (
@@ -188,7 +204,9 @@ export default function PipelineDashboard({
                 className="inline-flex shrink-0 items-center gap-1.5 rounded-lg bg-red-600 px-3 py-1.5 text-xs font-medium text-white hover:bg-red-700 disabled:opacity-50"
               >
                 <RefreshCw size={12} className={isFixing ? "animate-spin-slow" : undefined} />
-                {isFixing ? "FAILED 항목 자동 수정 중..." : "FAILED 항목 자동 수정"}
+                {isFixing
+                  ? `FAILED 항목 자동 수정 중 (${autoFixRound}/${maxAutoFixRounds})...`
+                  : "FAILED 항목 자동 수정"}
               </button>
             )}
           </div>

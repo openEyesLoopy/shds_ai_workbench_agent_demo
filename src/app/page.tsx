@@ -1,6 +1,6 @@
 "use client";
 
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import { Code2, GitBranch, Rocket } from "lucide-react";
 import Sidebar from "@/components/Sidebar";
 import EngineToggle from "@/components/EngineToggle";
@@ -33,6 +33,12 @@ interface TestReflectBase {
   toBe: string;
 }
 
+// How many times "FAILED 항목 자동 수정" fires on its own before handing
+// control back to the user — each round is its own /api/test-reflect request
+// (itself already retrying the QA gate internally up to 3x), so this caps
+// total unattended LLM calls/cost per blocked run instead of looping forever.
+const MAX_AUTO_FIX_ROUNDS = 3;
+
 // 테스트뷰어 is a tab inside the step-3 dashboard now, not its own step.
 // Step 3 (테스트반영) and step 4 (최종 반영/운영반영) are separate screens.
 const STEP_META = {
@@ -55,6 +61,7 @@ export default function Home() {
   const [isResetting, setIsResetting] = useState(false);
   const [isFixing, setIsFixing] = useState(false);
   const [fixError, setFixError] = useState<string | null>(null);
+  const [autoFixRound, setAutoFixRound] = useState(0);
 
   const hasResult = uploadResult !== null;
 
@@ -202,6 +209,7 @@ export default function Home() {
       setTestReflectResult(null);
       setTestReflectError(null);
       setUploadError(null);
+      setAutoFixRound(0);
     } catch (err) {
       setUploadError(err instanceof Error ? err.message : "초기화 중 오류가 발생했습니다.");
     } finally {
@@ -222,18 +230,28 @@ export default function Home() {
     setWorkspaceStep(step);
   }
 
+  /**
+   * A fresh 테스트반영 click stays on the 요구사항 분석 화면 (with a loading
+   * overlay) until the QA gate + commit + Vercel 재기동 wait inside
+   * runTestReflect fully resolves, and only then moves to step 3 — so step 3
+   * always renders with a result already in hand instead of showing its own
+   * loading state right after the click. Re-opening an already-fetched
+   * result (e.g. after "다시수정하기") just navigates straight there.
+   */
   function handleTestReflectClick() {
-    if (!uploadResult?.ok) return;
-    setWorkspaceStep(3);
-    if (!testReflectResult && !isTestReflecting) {
-      void runTestReflect({
-        planFileName: uploadResult.planFileName,
-        files: uploadResult.files,
-        diffs: uploadResult.diffs,
-        asIs: uploadResult.asIs,
-        toBe: uploadResult.toBe,
-      });
+    if (!uploadResult?.ok || isTestReflecting) return;
+    if (testReflectResult) {
+      setWorkspaceStep(3);
+      return;
     }
+    setAutoFixRound(0);
+    void runTestReflect({
+      planFileName: uploadResult.planFileName,
+      files: uploadResult.files,
+      diffs: uploadResult.diffs,
+      asIs: uploadResult.asIs,
+      toBe: uploadResult.toBe,
+    }).then(() => setWorkspaceStep(3));
   }
 
   /** "FAILED 항목 자동 수정" — retries the QA gate from a blocked testReflectResult, seeded with what just failed. */
@@ -253,6 +271,27 @@ export default function Home() {
       { sast: failedSast, failedTests }
     );
   }
+
+  /**
+   * Auto-chains "FAILED 항목 자동 수정" up to MAX_AUTO_FIX_ROUNDS times so the
+   * user doesn't have to keep clicking it by hand — each blocked
+   * testReflectResult (or a fixError from a request that threw, e.g. a
+   * transient GitHub commit error) triggers another round automatically,
+   * seeded with whatever just failed, until it passes, the round cap is hit,
+   * or there's nothing left to fix. Past the cap the manual button (passed to
+   * PipelineDashboard as onFix) is still there for the user to keep going.
+   */
+  useEffect(() => {
+    if (!testReflectResult || testReflectResult.ok) return;
+    if (isFixing) return;
+    if (autoFixRound >= MAX_AUTO_FIX_ROUNDS) return;
+    const failedSast = testReflectResult.sast.filter((r) => !r.passed);
+    const failedTests = testReflectResult.qa.automated_tests.filter((t) => t.result !== "PASS");
+    if (failedSast.length === 0 && failedTests.length === 0) return;
+    setAutoFixRound((n) => n + 1);
+    handleFixClick();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [testReflectResult, fixError, isFixing, autoFixRound]);
 
   function handleProductionReflectClick() {
     if (!uploadResult || !testReflectResult?.ok) return;
@@ -293,6 +332,12 @@ export default function Home() {
           </>
         )}
         {appState === "analyzing" && <AnalyzingOverlay />}
+        {appState === "workspace" && workspaceStep === 2 && isTestReflecting && (
+          <AnalyzingOverlay
+            title="테스트반영 진행 중..."
+            detail="보안 점검·자동화 테스트 통과 후 test 브랜치에 반영하고, Vercel 재기동이 완료될 때까지 기다리고 있습니다."
+          />
+        )}
 
         {appState === "workspace" && uploadResult && (
           <WorkspaceLayout
@@ -303,8 +348,7 @@ export default function Home() {
               workspaceStep === 2 ? (
                 <LeftInfoPanel
                   planFileName={uploadResult.planFileName}
-                  asIs={uploadResult.asIs}
-                  toBe={uploadResult.toBe}
+                  menuTree={uploadResult.menuTree}
                   blockedReason={uploadResult.blockedReason}
                 />
               ) : undefined
@@ -318,7 +362,7 @@ export default function Home() {
                       <button
                         type="button"
                         onClick={handleReset}
-                        disabled={isResetting}
+                        disabled={isResetting || isTestReflecting}
                         title="test 브랜치를 현재 main 브랜치 상태로 되돌립니다"
                         className="rounded-lg border border-red-200 px-3 py-1.5 text-xs font-medium text-red-600 hover:bg-red-50 disabled:opacity-50"
                       >
@@ -328,11 +372,11 @@ export default function Home() {
                     <button
                       type="button"
                       onClick={handleTestReflectClick}
-                      disabled={isResetting || !uploadResult.ok}
+                      disabled={isResetting || isTestReflecting || !uploadResult.ok}
                       title={uploadResult.ok ? undefined : uploadResult.blockedReason}
                       className="rounded-lg bg-gray-900 px-3 py-1.5 text-xs font-medium text-white hover:bg-gray-800 disabled:opacity-50"
                     >
-                      테스트반영
+                      {isTestReflecting ? "테스트반영 중..." : "테스트반영"}
                     </button>
                   </>
                 )}
@@ -388,6 +432,8 @@ export default function Home() {
                 onFix={handleFixClick}
                 isFixing={isFixing}
                 fixError={fixError}
+                autoFixRound={autoFixRound}
+                maxAutoFixRounds={MAX_AUTO_FIX_ROUNDS}
               />
             )}
             {workspaceStep === 4 && testReflectResult?.ok && (
