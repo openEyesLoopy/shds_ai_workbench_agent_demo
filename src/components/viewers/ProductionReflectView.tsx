@@ -68,12 +68,12 @@ export default function ProductionReflectView({
             </div>
           </div>
           <a
-            href={finalizeResult.repoUrl}
+            href="https://shds-ai-workbench-agent-demo.vercel.app/"
             target="_blank"
             rel="noreferrer"
             className="rounded-lg bg-gray-900 px-3 py-1.5 text-xs font-medium text-white hover:bg-gray-800"
           >
-            GitHub에서 보기
+            운영확인하러가기
           </a>
         </div>
 

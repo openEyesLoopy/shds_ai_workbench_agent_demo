@@ -126,12 +126,25 @@ interface CommitFilesResult {
 // the whole blob→tree→commit→ref sequence a couple of times, with a short
 // backoff, resolves it almost every time.
 const TRANSIENT_COMMIT_ERROR_PATTERN = /BadObjectState/i;
-const COMMIT_RETRY_ATTEMPTS = 3;
+// Two 테스트반영 requests landing close together (a double-click, or a manual
+// "FAILED 항목 자동 수정" overlapping the auto-fix effect) both read the same
+// branch head, then race to move it — the second's updateRef gets rejected as
+// non-fast-forward. That's not a real content conflict, just a stale base:
+// re-reading the branch head and rebuilding the tree on top of it resolves it,
+// since the tree only overlays the touched file paths onto base_tree.
+const NON_FAST_FORWARD_ERROR_PATTERN = /fast.forward|is not a fast|reference update failed/i;
+const COMMIT_RETRY_ATTEMPTS = 5;
 const COMMIT_RETRY_BASE_DELAY_MS = 1500;
 
 function isTransientCommitError(err: unknown): boolean {
   const message = err instanceof Error ? err.message : String(err);
   return TRANSIENT_COMMIT_ERROR_PATTERN.test(message);
+}
+
+function isNonFastForwardError(err: unknown): boolean {
+  const status = (err as { status?: number }).status;
+  const message = err instanceof Error ? err.message : String(err);
+  return status === 422 && NON_FAST_FORWARD_ERROR_PATTERN.test(message);
 }
 
 function sleep(ms: number): Promise<void> {
@@ -170,6 +183,15 @@ export async function commitFiles(
   let lastError: unknown;
   for (let attempt = 1; attempt <= COMMIT_RETRY_ATTEMPTS; attempt++) {
     try {
+      // Re-read the branch head on every attempt (not just once, up front) so
+      // a retry after a non-fast-forward conflict rebases onto whatever
+      // another concurrent commit just landed, instead of repeating the same
+      // stale base and failing the same way again.
+      if (attempt > 1) {
+        const latestSha = await getRefSha(owner, repo, branch);
+        if (latestSha) branchSha = latestSha;
+      }
+
       const { data: baseCommit } = await client.git.getCommit({
         owner,
         repo,
@@ -235,7 +257,8 @@ export async function commitFiles(
         `response=${JSON.stringify(responseData)}`,
         err
       );
-      if (attempt >= COMMIT_RETRY_ATTEMPTS || !isTransientCommitError(err)) {
+      const retryable = isTransientCommitError(err) || isNonFastForwardError(err);
+      if (attempt >= COMMIT_RETRY_ATTEMPTS || !retryable) {
         throw err;
       }
       await sleep(COMMIT_RETRY_BASE_DELAY_MS * attempt);

@@ -302,10 +302,6 @@ export default function Home() {
     }
   }
 
-  function handleBackToAnalysis() {
-    setWorkspaceStep(2);
-  }
-
   function handleBackToTestReflect() {
     setWorkspaceStep(3);
   }
@@ -391,13 +387,6 @@ export default function Home() {
                       className="rounded-lg border border-red-200 px-3 py-1.5 text-xs font-medium text-red-600 hover:bg-red-50 disabled:opacity-50"
                     >
                       {isResetting ? "초기화 중..." : "초기화"}
-                    </button>
-                    <button
-                      type="button"
-                      onClick={handleBackToAnalysis}
-                      className="rounded-lg border border-gray-200 px-3 py-1.5 text-xs font-medium text-gray-700 hover:bg-gray-50"
-                    >
-                      다시수정하기
                     </button>
                     {testReflectResult.ok && (
                       <button
