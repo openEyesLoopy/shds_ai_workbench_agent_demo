@@ -7,6 +7,7 @@ import EngineToggle from "@/components/EngineToggle";
 import UploadDropzone from "@/components/UploadDropzone";
 import AnalyzingOverlay from "@/components/AnalyzingOverlay";
 import WorkspaceLayout from "@/components/WorkspaceLayout";
+import { parseJsonResponse } from "@/lib/http";
 import LeftInfoPanel from "@/components/panels/LeftInfoPanel";
 import RequirementDiffList from "@/components/viewers/RequirementDiffList";
 import PipelineDashboard from "@/components/viewers/PipelineDashboard";
@@ -104,10 +105,10 @@ export default function Home() {
         form.append("previousToBe", uploadResult.toBe);
       }
       const res = await fetch("/api/upload", { method: "POST", body: form });
-      const data = await res.json();
+      const data = await parseJsonResponse<UploadResult | { error: string }>(res);
 
       if (!res.ok) {
-        throw new Error(data.error ?? "분석 중 오류가 발생했습니다.");
+        throw new Error("error" in data ? data.error : "분석 중 오류가 발생했습니다.");
       }
 
       setUploadResult(data as UploadResult);
@@ -145,8 +146,8 @@ export default function Home() {
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ ...base, previousFailures }),
       });
-      const data = await res.json();
-      if (!res.ok) throw new Error(data.error ?? "테스트 브랜치 반영 중 오류가 발생했습니다.");
+      const data = await parseJsonResponse<TestReflectResult | { error: string }>(res);
+      if (!res.ok) throw new Error("error" in data ? data.error : "테스트 브랜치 반영 중 오류가 발생했습니다.");
       // No artificial delay here — the request already only resolves once
       // the QA gate finishes and, if it passed, the Vercel redeploy for the
       // new commit is done too (see /api/test-reflect).
@@ -177,8 +178,8 @@ export default function Home() {
           files: testReflect.files,
         }),
       });
-      const data = await res.json();
-      if (!res.ok) throw new Error(data.error ?? "운영 반영 중 오류가 발생했습니다.");
+      const data = await parseJsonResponse<FinalizeResult | { error: string }>(res);
+      if (!res.ok) throw new Error("error" in data ? data.error : "운영 반영 중 오류가 발생했습니다.");
       // No artificial delay here either — resolves once the production
       // Vercel redeploy for this commit is done (see /api/finalize).
       setFinalizeResult(data as FinalizeResult);
@@ -200,7 +201,7 @@ export default function Home() {
     setIsResetting(true);
     try {
       const res = await fetch("/api/reset", { method: "POST" });
-      const data: ResetResult | { error: string } = await res.json();
+      const data = await parseJsonResponse<ResetResult | { error: string }>(res);
       if (!res.ok) throw new Error("error" in data ? data.error : "초기화 중 오류가 발생했습니다.");
       setAppState("idle");
       setUploadResult(null);
