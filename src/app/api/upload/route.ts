@@ -48,6 +48,11 @@ export async function POST(request: NextRequest) {
 
     const settings = await getSettings();
 
+    // Independent of the LLM analysis below (only needs owner/repo), so kick
+    // it off now instead of waiting until after the — much slower — LLM call
+    // to start it. Shaves one GitHub round trip off the critical path.
+    const aheadByPromise = getTestAheadCount(settings.githubOwner, settings.githubRepo);
+
     const baselineBranch = await resolveBaselineBranch(settings.githubOwner, settings.githubRepo);
     const baselineFiles = await listSourceFiles(
       settings.githubOwner,
@@ -74,7 +79,7 @@ export async function POST(request: NextRequest) {
     // `main` on GitHub — the actual source of truth — rather than a separately
     // persisted counter. This is just a preview label; the real version used
     // in the commit message is computed the same way again in /api/test-reflect.
-    const aheadBy = await getTestAheadCount(settings.githubOwner, settings.githubRepo);
+    const aheadBy = await aheadByPromise;
     const fromVersion = `1.${aheadBy}`;
     const baselinePaths = baselineFiles.map((f) => f.path);
 
