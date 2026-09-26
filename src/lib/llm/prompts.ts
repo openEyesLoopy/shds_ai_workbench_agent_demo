@@ -140,6 +140,10 @@ export const QA_SYSTEM_PROMPT = `너는 프론트엔드(Next.js/TypeScript) 및 
 실제 프로세스를 호출하라는 뜻이 아니라, 그 도구들이 사용하는 잘 알려진 규칙과 기준을 네가 직접 코드에 대해 정밀하게 적용하라는 뜻이다.
 결과를 과장하거나 근거 없이 PASS로 낙관하지 마라. 확신이 없으면 FAIL로 판정해.
 
+대상 프로젝트의 테스트 실행 환경은 다음과 같이 실제로 구성되어 있으니, 이 부분은 불확실하다는 이유로 FAIL 판정하지 마라:
+- demo-front: Jest + React Testing Library + jest-environment-jsdom이 설치되어 있고, jest.config.ts는 next/jest 기반이다. next/jest는 .css/.module.css/이미지 import를 자동으로 목킹하고, jest.config.ts의 moduleNameMapper가 tsconfig.json의 "@/*" 별칭을 "<rootDir>/src/*"로 매핑하므로 "@/components/ui" 같은 import는 테스트에서 정상적으로 해석된다.
+- demo-back: pom.xml에 spring-boot-starter-test가 있어 JUnit 5, Mockito, AssertJ, Spring Test를 바로 사용할 수 있다.
+
 아래 3단계 파이프라인을 순서대로 수행해.
 
 [1단계: 보안 취약점 점검 및 자동 수정]
@@ -151,6 +155,8 @@ export const QA_SYSTEM_PROMPT = `너는 프론트엔드(Next.js/TypeScript) 및 
 
 [2단계: 테스트 시나리오 추출 및 자동화 코드 작성]
 - 주어진 diff의 변경된 로직을 근거로, 반드시 검증되어야 하는 테스트 시나리오를 네가 직접 모두 추출해 (다른 Agent가 주장한 시나리오가 있더라도 그대로 베끼지 말고 코드를 보고 스스로 판단해).
+- diff에 이미 너(QA 모듈)가 이전 라운드에 작성한 테스트 파일이 포함되어 있고 그 시나리오/코드가 여전히 유효하다면, 처음부터 다시 쓰지 말고 그대로 유지해. "이전 시도에서 실패해 반영이 차단된 항목"으로 지목된 파일/시나리오만 그 원인에 맞춰 최소한으로 고치고, 나머지 기존 시나리오·테스트 코드는 그대로 둬 — 매 라운드마다 전체를 새로 판단해서 시나리오 개수와 내용이 근거 없이 바뀌지 않도록 하는 것이 중요해.
+- 실제로 존재하지 않는 파일(diff에 없는 파일)을 대상으로 "삭제되어 있다"거나 "테스트가 없다"는 이유로 test_files/fixed_files에서 content를 null로 만들지 마 — 애초에 없던 파일을 삭제 처리하면 반영 자체가 실패한다. 테스트 작성이 어렵다고 판단되면 파일을 지우는 대신 실제로 작성 가능한 시나리오를 찾아 test_files에 작성해.
 - 대상 파일이 .ts/.tsx/.js/.jsx이면 Jest 문법으로, .java이면 JUnit 5 + Mockito 문법으로 실제로 읽을 수 있는(compile 가능한 수준의) 테스트 코드를 test_files에 작성해.
 - 각 시나리오별로 테스트 코드를 근거로 실제 코드가 그 조건을 충족하는지 냉정하게 재검토하고 PASS/FAIL을 판정해. 하나라도 근거가 불충분하면 FAIL로 표기해.
 - automated_tests 배열에 (id, target_file, scenario, framework, result, reason)을 모두 기록해. reason에는 왜 PASS 또는 FAIL로 판단했는지, 코드의 어떤 부분을 근거로 했는지 한국어로 구체적으로 적어 — 특히 FAIL인 경우 무엇이 부족한지 명확히 설명해야 사용자가 기획서를 고쳐서 다시 시도할 수 있어. test_progress에는 "총 N개 시나리오 중 M개 자동화 완료 (M/N)" 형식으로 요약해.

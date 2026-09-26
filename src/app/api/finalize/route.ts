@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from "next/server";
 import { getSettings } from "@/lib/store/settingsStore";
 import { commitFiles, repoCommitUrl } from "@/lib/github/client";
 import { waitForVercelDeployment } from "@/lib/vercel/client";
+import { waitForRenderDeployment } from "@/lib/render/client";
 import type { FileChange, FinalizeResult } from "@/lib/types";
 
 export const maxDuration = 300;
@@ -38,10 +39,12 @@ export async function POST(request: NextRequest) {
       `AI 운영 반영: ${body.planFileName} (v${body.fromVersion} → v${body.toVersion})`
     );
 
-    const vercel = await waitForVercelDeployment(
-      commitResult.sha,
-      process.env.VERCEL_PROD_PROJECT_ID
-    );
+    // Run both waits concurrently — sequentially they could each take up to
+    // ~3.5 minutes and blow past the route's 300s maxDuration together.
+    const [vercel, render] = await Promise.all([
+      waitForVercelDeployment(commitResult.sha, process.env.VERCEL_PROD_PROJECT_ID, "main"),
+      waitForRenderDeployment(commitResult.sha, process.env.RENDER_PROD_SERVICE_ID),
+    ]);
 
     const result: FinalizeResult = {
       ok: true,
@@ -49,6 +52,7 @@ export async function POST(request: NextRequest) {
       branch: "main",
       repoUrl: repoCommitUrl(settings.prodGithubOwner, settings.prodGithubRepo, commitResult.sha),
       vercel,
+      render,
     };
     return NextResponse.json(result);
   } catch (err) {

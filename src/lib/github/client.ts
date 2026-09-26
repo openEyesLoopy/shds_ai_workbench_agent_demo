@@ -1,5 +1,6 @@
 import { Octokit } from "@octokit/rest";
 import type { FileChange, SourceFile } from "@/lib/types";
+import { normalizeRepoPath } from "@/lib/paths";
 
 const SOURCE_PREFIXES = ["demo-front/src", "demo-back/src"];
 const SOURCE_EXTENSIONS = [".ts", ".tsx", ".js", ".jsx", ".java", ".css", ".json"];
@@ -242,10 +243,18 @@ export async function commitFiles(
       // consistency lag (the source of the BadObjectState errors this retry
       // loop is guarding against) under a burst of simultaneous writes to the
       // same repo.
+      // A DELETE (newContent: null) for a path that was never actually in the
+      // baseline (oldContent also null) is a no-op the LLM hallucinated —
+      // GitHub's tree API doesn't respond with a clean 404/validation error
+      // for that, it fails the *entire* tree with a cryptic
+      // "GitRPC::BadObjectState" (reproduced directly against this repo's
+      // API), which blocks every other real file in the same commit too.
       const treeEntries: { path: string; mode: "100644"; type: "blob"; sha: string | null }[] = [];
       for (const file of files) {
+        if (file.newContent === null && file.oldContent === null) continue;
+        const path = normalizeRepoPath(file.path);
         if (file.newContent === null) {
-          treeEntries.push({ path: file.path, mode: "100644", type: "blob", sha: null });
+          treeEntries.push({ path, mode: "100644", type: "blob", sha: null });
           continue;
         }
         const { data: blob } = await client.git.createBlob({
@@ -254,7 +263,7 @@ export async function commitFiles(
           content: file.newContent,
           encoding: "utf-8",
         });
-        treeEntries.push({ path: file.path, mode: "100644", type: "blob", sha: blob.sha });
+        treeEntries.push({ path, mode: "100644", type: "blob", sha: blob.sha });
       }
 
       const { data: newTree } = await client.git.createTree({

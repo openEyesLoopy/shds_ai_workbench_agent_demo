@@ -9,6 +9,7 @@ import {
   resolveBaselineBranch,
 } from "@/lib/github/client";
 import { getLlmProvider } from "@/lib/llm";
+import { isValidRepoPath, normalizeRepoPath } from "@/lib/paths";
 import type { FileChange, UploadResult } from "@/lib/types";
 
 export const maxDuration = 300;
@@ -70,11 +71,36 @@ export async function POST(request: NextRequest) {
     });
 
     const baselineByPath = new Map(baselineFiles.map((f) => [f.path, f.content]));
-    const generatedChanges: FileChange[] = analysis.files.map((f) => ({
-      path: f.path,
-      oldContent: baselineByPath.get(f.path) ?? null,
-      newContent: f.content,
-    }));
+    // Drop any entry whose path the LLM hallucinated as a placeholder (seen:
+    // a literal "N/A") instead of a real file path — including one in the
+    // commit later makes GitHub's tree API fail with a cryptic error that
+    // blocks the *entire* batch, not just that one bogus file.
+    const generatedChangesRaw: FileChange[] = analysis.files
+      .map((f) => ({ ...f, path: normalizeRepoPath(f.path) }))
+      .filter((f) => isValidRepoPath(f.path))
+      .map((f) => ({
+        path: f.path,
+        oldContent: baselineByPath.get(f.path) ?? null,
+        newContent: f.content,
+      }));
+    // A DELETE (newContent: null) for a path that never actually existed in
+    // the baseline (oldContent also null) is a no-op the LLM hallucinated —
+    // besides being meaningless, GitHub's tree API rejects the *entire*
+    // commit with a cryptic "GitRPC::BadObjectState" if one of these slips
+    // through (reproduced directly against the repo's API).
+    const droppedPaths = new Set(
+      generatedChangesRaw
+        .filter((f) => f.newContent === null && f.oldContent === null)
+        .map((f) => f.path)
+    );
+    const generatedChanges = generatedChangesRaw.filter((f) => !droppedPaths.has(f.path));
+    // Diff entries share the same path space as generatedChanges (both
+    // rendered together, and later re-sent as-is to /api/test-reflect) —
+    // normalize/filter the same way so a bogus, leading-slash, or dropped
+    // no-op-delete path never shows as a phantom entry in the diff list.
+    const normalizedDiffs = analysis.diffs
+      .map((d) => ({ ...d, path: normalizeRepoPath(d.path) }))
+      .filter((d) => isValidRepoPath(d.path) && !droppedPaths.has(d.path));
 
     // The version badge is derived from how far `test` already sits ahead of
     // `main` on GitHub — the actual source of truth — rather than a separately
@@ -95,7 +121,7 @@ export async function POST(request: NextRequest) {
       asIs: analysis.asIs,
       toBe: analysis.toBe,
       menuTree: analysis.menuTree,
-      diffs: analysis.diffs,
+      diffs: normalizedDiffs,
       files: generatedChanges,
       baselinePaths,
     };

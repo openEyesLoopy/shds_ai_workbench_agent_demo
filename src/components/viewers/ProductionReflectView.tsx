@@ -1,6 +1,6 @@
 import { CheckCircle2, GitBranch, GitCommitHorizontal, XCircle } from "lucide-react";
 import type { FinalizeResult, QaAuditResult } from "@/lib/types";
-import { LoadingPane, VercelStatusBadge } from "@/components/viewers/dashboardShared";
+import { LoadingPane, RenderStatusBadge, VercelStatusBadge } from "@/components/viewers/dashboardShared";
 
 interface ProductionReflectViewProps {
   isFinalizing: boolean;
@@ -20,7 +20,7 @@ export default function ProductionReflectView({
     return (
       <LoadingPane
         title="운영 반영중..."
-        detail="운영 저장소 main 브랜치에 소스를 반영하고 Vercel(운영) 재배포가 완료되기를 기다리고 있습니다."
+        detail="운영 저장소 main 브랜치에 소스를 반영하고 Vercel(운영) 재배포와 Render(운영) 서버 재기동이 모두 완료되기를 기다리고 있습니다."
       />
     );
   }
@@ -64,6 +64,7 @@ export default function ProductionReflectView({
                 </span>
                 <span>방금 전 배포됨</span>
                 <VercelStatusBadge vercel={finalizeResult.vercel} />
+                <RenderStatusBadge render={finalizeResult.render} />
               </p>
             </div>
           </div>

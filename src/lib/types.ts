@@ -195,13 +195,21 @@ export interface VercelDeployStatus {
   timedOut: boolean;
 }
 
+/** Render (demo-back) redeploy status for a commit, when the relevant RENDER_* env vars are configured. */
+export interface RenderDeployStatus {
+  configured: boolean;
+  found: boolean;
+  status: string | null;
+  timedOut: boolean;
+}
+
 /**
  * Result of clicking "테스트반영" — this is where the QA/SAST gate actually
  * runs (previously it ran silently during upload). `ok: false` means the
  * gate blocked it and nothing was committed; `qa`/`sast`/`resource`/`files`/
  * `diffs` reflect whatever the gate's last attempt produced either way, so
  * the dashboard can show exactly what was checked and why it did or didn't
- * pass. The git/Vercel/diagram fields are only present when `ok` is true.
+ * pass. The git/Vercel/Render/diagram fields are only present when `ok` is true.
  */
 export interface TestReflectResult {
   ok: boolean;
@@ -215,6 +223,7 @@ export interface TestReflectResult {
   branch?: string;
   repoUrl?: string;
   vercel?: VercelDeployStatus;
+  render?: RenderDeployStatus;
   businessDiagram?: BusinessDiagramOutput;
 }
 
@@ -225,6 +234,7 @@ export interface FinalizeResult {
   branch: string;
   repoUrl: string;
   vercel?: VercelDeployStatus;
+  render?: RenderDeployStatus;
 }
 
 /** Result of resetting `test` back to whatever `main` currently points at. */
@@ -233,4 +243,6 @@ export interface ResetResult {
   commitSha: string;
   branch: string;
   repoUrl: string;
+  vercel?: VercelDeployStatus;
+  render?: RenderDeployStatus;
 }

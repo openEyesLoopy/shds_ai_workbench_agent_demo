@@ -255,12 +255,18 @@ export default function Home() {
     }).then(() => setWorkspaceStep(3));
   }
 
-  /** "FAILED 항목 자동 수정" — retries the QA gate from a blocked testReflectResult, seeded with what just failed. */
+  /**
+   * "FAILED 항목 자동 수정" — retries from a blocked testReflectResult, seeded
+   * with what just failed. QA/SAST can both already be empty here (e.g. the
+   * QA gate actually passed but the follow-up GitHub commit/redeploy step
+   * hit a transient infra error — see /api/test-reflect) — that's still a
+   * blocked result the user needs a retry button for, just with nothing to
+   * seed as "previously failed", so don't bail out in that case.
+   */
   function handleFixClick() {
     if (!uploadResult || !testReflectResult || testReflectResult.ok) return;
     const failedSast = testReflectResult.sast.filter((r) => !r.passed);
     const failedTests = testReflectResult.qa.automated_tests.filter((t) => t.result !== "PASS");
-    if (failedSast.length === 0 && failedTests.length === 0) return;
     void runTestReflect(
       {
         planFileName: uploadResult.planFileName,
@@ -360,10 +366,10 @@ export default function Home() {
                         type="button"
                         onClick={handleReset}
                         disabled={isResetting || isTestReflecting}
-                        title="test 브랜치를 현재 main 브랜치 상태로 되돌립니다"
+                        title="test 브랜치를 현재 main 브랜치 상태로 되돌리고, Vercel/Render 재배포가 완료될 때까지 기다립니다"
                         className="rounded-lg border border-red-200 px-3 py-1.5 text-xs font-medium text-red-600 hover:bg-red-50 disabled:opacity-50"
                       >
-                        {isResetting ? "초기화 중..." : "초기화"}
+                        {isResetting ? "초기화 중... (재배포 대기)" : "초기화"}
                       </button>
                     )}
                     <button
@@ -383,10 +389,10 @@ export default function Home() {
                       type="button"
                       onClick={handleReset}
                       disabled={isResetting}
-                      title="test 브랜치를 현재 main 브랜치 상태로 되돌립니다"
+                      title="test 브랜치를 현재 main 브랜치 상태로 되돌리고, Vercel/Render 재배포가 완료될 때까지 기다립니다"
                       className="rounded-lg border border-red-200 px-3 py-1.5 text-xs font-medium text-red-600 hover:bg-red-50 disabled:opacity-50"
                     >
-                      {isResetting ? "초기화 중..." : "초기화"}
+                      {isResetting ? "초기화 중... (재배포 대기)" : "초기화"}
                     </button>
                     {testReflectResult.ok && (
                       <button

@@ -17,7 +17,12 @@ import type { QaAuditResult, TestReflectResult } from "@/lib/types";
 import CodeDiffViewer from "@/components/viewers/CodeDiffViewer";
 import MockupViewer from "@/components/viewers/MockupViewer";
 import BusinessDiagramView from "@/components/viewers/BusinessDiagramView";
-import { LoadingPane, MetricsColumn, VercelStatusBadge } from "@/components/viewers/dashboardShared";
+import {
+  LoadingPane,
+  MetricsColumn,
+  RenderStatusBadge,
+  VercelStatusBadge,
+} from "@/components/viewers/dashboardShared";
 
 interface PipelineDashboardProps {
   isTestReflecting: boolean;
@@ -125,7 +130,7 @@ export default function PipelineDashboard({
     return (
       <LoadingPane
         title="테스트 반영중..."
-        detail="독립 QA 모듈이 보안 점검·자동화 테스트를 수행하고, 통과 시 test 브랜치에 소스를 반영한 뒤 Vercel 재배포가 완료되기를 기다리고 있습니다."
+        detail="독립 QA 모듈이 보안 점검·자동화 테스트를 수행하고, 통과 시 test 브랜치에 소스를 반영한 뒤 Vercel(프론트) 재배포와 Render(백엔드) 재기동이 모두 완료되기를 기다리고 있습니다."
       />
     );
   }
@@ -153,6 +158,12 @@ export default function PipelineDashboard({
   const result = testReflectResult!;
   const { qa, sast, resource } = result;
   const passed = result.ok;
+  // QA/SAST can both be clean here even though the run is blocked — e.g. the
+  // gate actually passed but the follow-up GitHub commit/redeploy step hit a
+  // transient infra error (see /api/test-reflect). That's not something
+  // another QA pass can fix, so don't claim an auto-retry is coming for it.
+  const hasFixableFailures =
+    sast.some((r) => !r.passed) || qa.automated_tests.some((t) => t.result !== "PASS");
 
   return (
     <div className="flex flex-col gap-4 p-4">
@@ -170,6 +181,7 @@ export default function PipelineDashboard({
               </span>
               <span>방금 전 반영됨</span>
               <VercelStatusBadge vercel={result.vercel} />
+              <RenderStatusBadge render={result.render} />
             </p>
           </div>
         </div>
@@ -184,12 +196,12 @@ export default function PipelineDashboard({
                   {result.blockedReason ??
                     "아래 SAST/QA 결과 중 FAILED 항목이 원인입니다. test 브랜치에는 아무것도 반영되지 않았습니다."}
                 </p>
-                {!isFixing && !autoFixExhausted && maxAutoFixRounds > 0 && (
+                {hasFixableFailures && !isFixing && !autoFixExhausted && maxAutoFixRounds > 0 && (
                   <p className="mt-1 text-[11px] text-gray-400">
                     자동으로 원인을 분석해 다시 시도합니다 ({autoFixRound}/{maxAutoFixRounds}회 완료)...
                   </p>
                 )}
-                {autoFixExhausted && (
+                {hasFixableFailures && autoFixExhausted && (
                   <p className="mt-1 text-[11px] text-amber-600">
                     자동 수정을 {maxAutoFixRounds}회 시도했지만 아직 해결되지 않았습니다. 필요하면 아래 버튼으로 계속 시도하거나, 기획서 내용을 조정해보세요.
                   </p>
@@ -204,9 +216,13 @@ export default function PipelineDashboard({
                 className="inline-flex shrink-0 items-center gap-1.5 rounded-lg bg-red-600 px-3 py-1.5 text-xs font-medium text-white hover:bg-red-700 disabled:opacity-50"
               >
                 <RefreshCw size={12} className={isFixing ? "animate-spin-slow" : undefined} />
-                {isFixing
-                  ? `FAILED 항목 자동 수정 중 (${autoFixRound}/${maxAutoFixRounds})...`
-                  : "FAILED 항목 자동 수정"}
+                {hasFixableFailures
+                  ? isFixing
+                    ? `FAILED 항목 자동 수정 중 (${autoFixRound}/${maxAutoFixRounds})...`
+                    : "FAILED 항목 자동 수정"
+                  : isFixing
+                    ? "다시 시도 중..."
+                    : "다시 시도"}
               </button>
             )}
           </div>

@@ -11,6 +11,7 @@ import type {
 import { applyQaOutput } from "./applyQaOutput";
 import { runSast } from "@/lib/sast/scan";
 import { checkMavenCompile } from "./mavenCompileCheck";
+import { isValidRepoPath, normalizeRepoPath } from "@/lib/paths";
 
 /** How many auto-fix rounds to run before giving up and surfacing a manual retry to the user. */
 const MAX_ATTEMPTS = 3;
@@ -44,8 +45,17 @@ export async function runQaGate(
   projectRules: SourceFile[],
   seedFailures?: { sast: SastResult[]; failedTests: QaAutomatedTest[] }
 ): Promise<QaGateResult> {
-  let files = initialFiles;
-  let diffs = initialDiffs;
+  // A client retrying a blocked attempt resends its own last-known
+  // files/diffs as-is — if an earlier round already let a hallucinated
+  // placeholder path (e.g. a literal "N/A") slip in, it would otherwise ride
+  // along on every retry forever. Clean it here too, not just in
+  // applyQaOutput, so a poisoned client state self-heals on the next retry.
+  let files = initialFiles
+    .map((f) => ({ ...f, path: normalizeRepoPath(f.path) }))
+    .filter((f) => isValidRepoPath(f.path));
+  let diffs = initialDiffs
+    .map((d) => ({ ...d, path: normalizeRepoPath(d.path) }))
+    .filter((d) => isValidRepoPath(d.path));
   let previousFailures = seedFailures;
   let sast: SastResult[] = [];
   let automatedTests: QaAutomatedTest[] = [];
@@ -67,6 +77,26 @@ export async function runQaGate(
     testProgress = qaOutput.summary.test_progress;
     allSecurityFixes.push(...qaOutput.security_fixes);
     if (qaOutput.fix_summary) fixSummaries.push(qaOutput.fix_summary);
+
+    // `automatedTests.every(...)` on an empty array is vacuously true, so a
+    // QA round that produces zero scenarios (seen in practice: it deleted
+    // the test file instead of writing one, because writing it looked hard)
+    // would otherwise sail through as "SUCCESS" with no verification at all.
+    // Treat "no scenarios for a real diff" as its own failing test so the
+    // gate retries instead of silently accepting an unverified commit.
+    if (automatedTests.length === 0 && files.some((f) => f.newContent !== null)) {
+      automatedTests = [
+        {
+          id: 0,
+          target_file: files.find((f) => f.newContent !== null)?.path ?? diffs[0]?.path ?? "",
+          scenario: "이번 변경사항 전체에 대한 테스트 시나리오 추출",
+          framework: "Jest",
+          result: "FAIL",
+          reason:
+            "diff에 실제 코드 변경이 있는데도 automated_tests가 0건입니다. 테스트 작성이 어렵다는 이유로 생략하거나 테스트 파일을 삭제하지 말고, 변경된 로직을 검증하는 시나리오를 최소 1개 이상 작성하세요.",
+        },
+      ];
+    }
 
     const failedSast = sast.filter((r) => !r.passed);
     const failedTests = automatedTests.filter((t) => t.result !== "PASS");
