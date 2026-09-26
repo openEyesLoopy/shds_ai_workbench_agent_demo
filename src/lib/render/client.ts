@@ -7,13 +7,8 @@ export interface RenderDeployStatus {
   timedOut: boolean;
 }
 
-const POLL_INTERVAL_MS = 4000;
-// Kept under the route's maxDuration (300s) with room for the git commit step
-// and the Vercel wait it runs alongside (see test-reflect/finalize routes).
-const MAX_WAIT_MS = 3.5 * 60 * 1000;
-
 // https://api-docs.render.com/reference/list-deploys
-const TERMINAL_STATUSES = new Set([
+export const RENDER_TERMINAL_STATUSES = new Set([
   "live",
   "deactivated",
   "build_failed",
@@ -45,16 +40,17 @@ async function fetchDeployForCommit(
 }
 
 /**
- * Polls Render until the deploy tied to `commitSha` on the given `serviceId`
- * reaches a terminal state (live, or one of the failure statuses), mirroring
- * lib/vercel/client.ts's waitForVercelDeployment so 테스트반영/운영반영 can
- * keep their loading state up until the backend's Render redeploy — not just
- * the frontend's Vercel redeploy — is actually done. Render's deploy webhook
- * can take a few seconds to register, so "not found yet" is treated as
- * pending, not failure. Returns `configured: false` immediately (no network
- * calls) when RENDER_API_KEY or `serviceId` aren't set, so this stays optional.
+ * Checks Render *once* for the deploy tied to `commitSha` on `serviceId` — no
+ * internal polling loop (see vercel/client.ts's checkVercelDeployment for
+ * why: Vercel's Hobby plan kills serverless functions at 60s, so a
+ * multi-minute server-side wait loop routinely 504'd in production even
+ * though it worked fine on `next dev`). The route returns as soon as the git
+ * commit succeeds, and the *client* calls this repeatedly via
+ * /api/deploy-status until it reaches a terminal status. Returns
+ * `configured: false` immediately (no network calls) when RENDER_API_KEY or
+ * `serviceId` aren't set, so this stays optional.
  */
-export async function waitForRenderDeployment(
+export async function checkRenderDeployment(
   commitSha: string,
   serviceId: string | undefined
 ): Promise<RenderDeployStatus> {
@@ -62,21 +58,11 @@ export async function waitForRenderDeployment(
     return { configured: false, found: false, status: null, timedOut: false };
   }
 
-  const deadline = Date.now() + MAX_WAIT_MS;
-  let lastStatus: string | null = null;
-
-  while (Date.now() < deadline) {
-    const deploy = await fetchDeployForCommit(commitSha, serviceId);
-    if (deploy) {
-      lastStatus = deploy.status ?? null;
-      if (lastStatus && TERMINAL_STATUSES.has(lastStatus)) {
-        return { configured: true, found: true, status: lastStatus, timedOut: false };
-      }
-    }
-    await new Promise((resolve) => setTimeout(resolve, POLL_INTERVAL_MS));
+  const deploy = await fetchDeployForCommit(commitSha, serviceId);
+  if (!deploy) {
+    return { configured: true, found: false, status: null, timedOut: false };
   }
-
-  return { configured: true, found: lastStatus !== null, status: lastStatus, timedOut: true };
+  return { configured: true, found: true, status: deploy.status ?? null, timedOut: false };
 }
 
 /**

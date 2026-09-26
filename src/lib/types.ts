@@ -203,6 +203,12 @@ export interface RenderDeployStatus {
   timedOut: boolean;
 }
 
+/** A single one-shot /api/deploy-status check — see lib/pollDeployStatus.ts for how the client repeats this into a wait. */
+export interface DeployStatusResult {
+  vercel: VercelDeployStatus;
+  render: RenderDeployStatus;
+}
+
 /**
  * Result of clicking "테스트반영" — this is where the QA/SAST gate actually
  * runs (previously it ran silently during upload). `ok: false` means the

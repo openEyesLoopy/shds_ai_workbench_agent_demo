@@ -1,11 +1,16 @@
 import { NextResponse } from "next/server";
 import { getSettings } from "@/lib/store/settingsStore";
 import { promoteBranch, repoCommitUrl } from "@/lib/github/client";
-import { triggerVercelDeployment, waitForVercelDeployment } from "@/lib/vercel/client";
-import { triggerRenderDeploy, waitForRenderDeployment } from "@/lib/render/client";
+import { triggerVercelDeployment } from "@/lib/vercel/client";
+import { triggerRenderDeploy } from "@/lib/render/client";
 import type { ResetResult } from "@/lib/types";
 
-export const maxDuration = 300;
+// See test-reflect/route.ts's comment — Vercel Hobby kills functions at 60s,
+// so this no longer waits for the Vercel/Render redeploy inline; the client
+// polls /api/deploy-status for that instead (lib/pollDeployStatus.ts). The
+// two trigger calls below stay here since they're each one quick POST, not a
+// wait loop.
+export const maxDuration = 60;
 
 /**
  * Points `test` back at whatever `main` currently is, discarding any AI
@@ -13,10 +18,10 @@ export const maxDuration = 300;
  * that was very possibly already built once before (e.g. `main` already sits
  * on it) — both Vercel's and Render's git auto-deploy treat that as "nothing
  * new to build" and skip it, which would otherwise leave the previously-live
- * (since-reverted) build serving indefinitely (see triggerVercelDeployment/
- * triggerRenderDeploy). So this explicitly asks both to rebuild this exact
- * commit and waits for both, so the response only resolves once they're
- * actually caught up with the reset, not just the GitHub ref update.
+ * (since-reverted) build serving indefinitely. So this explicitly asks both
+ * to rebuild this exact commit (triggerVercelDeployment/triggerRenderDeploy)
+ * before returning — the client then polls /api/deploy-status until both
+ * are actually caught up with the reset.
  */
 export async function POST() {
   try {
@@ -33,18 +38,12 @@ export async function POST() {
       ),
       triggerRenderDeploy(sha, process.env.RENDER_TEST_SERVICE_ID),
     ]);
-    const [vercel, render] = await Promise.all([
-      waitForVercelDeployment(sha, process.env.VERCEL_PROJECT_ID, "test"),
-      waitForRenderDeployment(sha, process.env.RENDER_TEST_SERVICE_ID),
-    ]);
 
     const result: ResetResult = {
       ok: true,
       commitSha: sha,
       branch: "test",
       repoUrl: repoCommitUrl(settings.githubOwner, settings.githubRepo, sha),
-      vercel,
-      render,
     };
     return NextResponse.json(result);
   } catch (err) {

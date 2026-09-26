@@ -8,6 +8,7 @@ import UploadDropzone from "@/components/UploadDropzone";
 import AnalyzingOverlay from "@/components/AnalyzingOverlay";
 import WorkspaceLayout from "@/components/WorkspaceLayout";
 import { parseJsonResponse } from "@/lib/http";
+import { pollDeployStatus } from "@/lib/pollDeployStatus";
 import LeftInfoPanel from "@/components/panels/LeftInfoPanel";
 import RequirementDiffList from "@/components/viewers/RequirementDiffList";
 import PipelineDashboard from "@/components/viewers/PipelineDashboard";
@@ -36,8 +37,8 @@ interface TestReflectBase {
 
 // How many times "FAILED 항목 자동 수정" fires on its own before handing
 // control back to the user — each round is its own /api/test-reflect request
-// (itself already retrying the QA gate internally up to 3x), so this caps
-// total unattended LLM calls/cost per blocked run instead of looping forever.
+// (one QA pass each), so this caps total unattended LLM calls/cost per
+// blocked run instead of looping forever.
 const MAX_AUTO_FIX_ROUNDS = 3;
 
 // 테스트뷰어 is a tab inside the step-3 dashboard now, not its own step.
@@ -148,10 +149,18 @@ export default function Home() {
       });
       const data = await parseJsonResponse<TestReflectResult | { error: string }>(res);
       if (!res.ok) throw new Error("error" in data ? data.error : "테스트 브랜치 반영 중 오류가 발생했습니다.");
-      // No artificial delay here — the request already only resolves once
-      // the QA gate finishes and, if it passed, the Vercel redeploy for the
-      // new commit is done too (see /api/test-reflect).
-      setTestReflectResult(data as TestReflectResult);
+      const result = data as TestReflectResult;
+      setTestReflectResult(result);
+      // /api/test-reflect resolves as soon as the commit succeeds — it no
+      // longer waits for the Vercel/Render redeploy itself (that used to
+      // routinely exceed Vercel Hobby's 60s function cap). Poll for it here
+      // instead, merging live status into the already-shown result so the
+      // loading state stays up until both are actually done.
+      if (result.ok && result.commitSha) {
+        await pollDeployStatus("test", result.commitSha, (status) => {
+          setTestReflectResult((prev) => (prev ? { ...prev, ...status } : prev));
+        });
+      }
     } catch (err) {
       const message =
         err instanceof Error ? err.message : "테스트 브랜치 반영 중 오류가 발생했습니다.";
@@ -180,9 +189,15 @@ export default function Home() {
       });
       const data = await parseJsonResponse<FinalizeResult | { error: string }>(res);
       if (!res.ok) throw new Error("error" in data ? data.error : "운영 반영 중 오류가 발생했습니다.");
-      // No artificial delay here either — resolves once the production
-      // Vercel redeploy for this commit is done (see /api/finalize).
-      setFinalizeResult(data as FinalizeResult);
+      const result = data as FinalizeResult;
+      setFinalizeResult(result);
+      // Same as runTestReflect — /api/finalize resolves right after the
+      // commit, the client polls for the production Vercel/Render redeploy.
+      if (result.commitSha) {
+        await pollDeployStatus("prod", result.commitSha, (status) => {
+          setFinalizeResult((prev) => (prev ? { ...prev, ...status } : prev));
+        });
+      }
     } catch (err) {
       setFinalizeError(err instanceof Error ? err.message : "운영 반영 중 오류가 발생했습니다.");
     } finally {
@@ -203,6 +218,13 @@ export default function Home() {
       const res = await fetch("/api/reset", { method: "POST" });
       const data = await parseJsonResponse<ResetResult | { error: string }>(res);
       if (!res.ok) throw new Error("error" in data ? data.error : "초기화 중 오류가 발생했습니다.");
+      const result = data as ResetResult;
+      // /api/reset resolves right after the branch update + redeploy
+      // trigger; wait for the actual redeploy here so the button's loading
+      // state reflects reality instead of appearing done before it is.
+      if (result.commitSha) {
+        await pollDeployStatus("test", result.commitSha, () => {});
+      }
       setAppState("idle");
       setUploadResult(null);
       setFinalizeResult(null);

@@ -8,11 +8,7 @@ export interface VercelDeploymentStatus {
   timedOut: boolean;
 }
 
-const POLL_INTERVAL_MS = 4000;
-// Kept under the route's maxDuration (300s) with room for the git commit step.
-const MAX_WAIT_MS = 3.5 * 60 * 1000;
-
-const TERMINAL_STATES = new Set(["READY", "ERROR", "CANCELED"]);
+export const VERCEL_TERMINAL_STATES = new Set(["READY", "ERROR", "CANCELED"]);
 
 interface RawDeployment {
   readyState?: string;
@@ -54,15 +50,21 @@ async function fetchDeploymentForCommit(
 }
 
 /**
- * Polls Vercel until the deployment tied to `commitSha` *on `branch`* for the
- * given `projectId` reaches a terminal state, so 테스트반영/운영반영/초기화 can
- * keep their loading state up until the Vercel redeploy is actually done
- * instead of just the GitHub push. Vercel's GitHub webhook can take a few
- * seconds to even register the deployment, so "not found yet" is treated as
- * pending, not failure. Returns `configured: false` immediately (no network
- * calls) when VERCEL_TOKEN or `projectId` aren't set, so this stays optional.
+ * Checks Vercel *once* for the deployment tied to `commitSha` on `branch` for
+ * the given `projectId` — no internal polling loop. `테스트반영`/`운영반영`/
+ * `초기화` used to block on a server-side loop here for up to 3.5 minutes,
+ * but Vercel's Hobby plan kills serverless functions at 60s, so any
+ * commit+QA+deploy-wait chain routinely hit a 504 there (it only ever worked
+ * on `next dev`, which has no such cap). The route now returns as soon as
+ * the git commit succeeds, and the *client* repeats this single check every
+ * few seconds via /api/deploy-status — each check is one fast HTTP call, so
+ * no single request can ever run long enough to hit the platform's cap, no
+ * matter how long the actual Vercel build takes. `timedOut` is left for the
+ * caller to set based on its own elapsed polling time, not computed here.
+ * Returns `configured: false` immediately (no network calls) when
+ * VERCEL_TOKEN or `projectId` aren't set, so this stays optional.
  */
-export async function waitForVercelDeployment(
+export async function checkVercelDeployment(
   commitSha: string,
   projectId: string | undefined,
   branch: string
@@ -71,23 +73,13 @@ export async function waitForVercelDeployment(
     return { configured: false, found: false, state: null, url: null, timedOut: false };
   }
 
-  const deadline = Date.now() + MAX_WAIT_MS;
-  let lastState: string | null = null;
-  let lastUrl: string | null = null;
-
-  while (Date.now() < deadline) {
-    const deployment = await fetchDeploymentForCommit(commitSha, projectId, branch);
-    if (deployment) {
-      lastState = deployment.readyState ?? deployment.state ?? null;
-      lastUrl = deployment.url ? `https://${deployment.url}` : null;
-      if (lastState && TERMINAL_STATES.has(lastState)) {
-        return { configured: true, found: true, state: lastState, url: lastUrl, timedOut: false };
-      }
-    }
-    await new Promise((resolve) => setTimeout(resolve, POLL_INTERVAL_MS));
+  const deployment = await fetchDeploymentForCommit(commitSha, projectId, branch);
+  if (!deployment) {
+    return { configured: true, found: false, state: null, url: null, timedOut: false };
   }
-
-  return { configured: true, found: lastState !== null, state: lastState, url: lastUrl, timedOut: true };
+  const state = deployment.readyState ?? deployment.state ?? null;
+  const url = deployment.url ? `https://${deployment.url}` : null;
+  return { configured: true, found: true, state, url, timedOut: false };
 }
 
 /**

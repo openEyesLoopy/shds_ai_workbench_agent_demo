@@ -1,11 +1,12 @@
 import { NextRequest, NextResponse } from "next/server";
 import { getSettings } from "@/lib/store/settingsStore";
 import { commitFiles, repoCommitUrl } from "@/lib/github/client";
-import { waitForVercelDeployment } from "@/lib/vercel/client";
-import { waitForRenderDeployment } from "@/lib/render/client";
 import type { FileChange, FinalizeResult } from "@/lib/types";
 
-export const maxDuration = 300;
+// See test-reflect/route.ts's comment — Vercel Hobby kills functions at 60s,
+// so this no longer waits for the Vercel/Render redeploy inline; the client
+// polls /api/deploy-status for that instead (lib/pollDeployStatus.ts).
+export const maxDuration = 60;
 
 interface FinalizeRequestBody {
   planFileName: string;
@@ -19,9 +20,9 @@ interface FinalizeRequestBody {
  * `test` straight onto the `main` branch of the production repo/branch
  * configured in settings (prodGithubOwner/prodGithubRepo — this may be the
  * very same repo as the test target, just a different branch, or a fully
- * separate repo; commitFiles doesn't care either way). Then — same as
- * /api/test-reflect — only resolves once the production Vercel project's
- * redeploy for this commit is actually READY.
+ * separate repo; commitFiles doesn't care either way). Resolves as soon as
+ * the commit succeeds — the client is responsible for polling
+ * /api/deploy-status until the production Vercel/Render redeploy is ready.
  */
 export async function POST(request: NextRequest) {
   try {
@@ -39,20 +40,11 @@ export async function POST(request: NextRequest) {
       `AI 운영 반영: ${body.planFileName} (v${body.fromVersion} → v${body.toVersion})`
     );
 
-    // Run both waits concurrently — sequentially they could each take up to
-    // ~3.5 minutes and blow past the route's 300s maxDuration together.
-    const [vercel, render] = await Promise.all([
-      waitForVercelDeployment(commitResult.sha, process.env.VERCEL_PROD_PROJECT_ID, "main"),
-      waitForRenderDeployment(commitResult.sha, process.env.RENDER_PROD_SERVICE_ID),
-    ]);
-
     const result: FinalizeResult = {
       ok: true,
       commitSha: commitResult.sha,
       branch: "main",
       repoUrl: repoCommitUrl(settings.prodGithubOwner, settings.prodGithubRepo, commitResult.sha),
-      vercel,
-      render,
     };
     return NextResponse.json(result);
   } catch (err) {
