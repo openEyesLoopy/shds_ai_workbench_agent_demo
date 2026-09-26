@@ -20,10 +20,17 @@ export function applyQaOutput(
   // Drop any entry whose path the QA module hallucinated as a placeholder
   // (seen: a literal "N/A") instead of a real file path — including one in
   // the commit later makes GitHub's tree API fail with a cryptic error that
-  // blocks the *entire* batch, not just that one bogus file.
+  // blocks the *entire* batch, not just that one bogus file. Also drop any
+  // fixed_files entry with content: null — fixed_files exists to patch a
+  // vulnerability with a complete rewritten file, never to delete one; seen
+  // in practice: a null here silently deleted a core production file (e.g.
+  // page.tsx), and because the client resends its last-known files on every
+  // retry, that deletion then persisted forever, with every later round
+  // "correctly" failing to test a file that no longer existed — a
+  // self-inflicted, never-recovering loop this guard prevents at the root.
   const fixedFiles = qa.fixed_files
     .map((f) => ({ ...f, path: normalizeRepoPath(f.path) }))
-    .filter((f) => isValidRepoPath(f.path));
+    .filter((f) => isValidRepoPath(f.path) && f.content !== null);
   const testFiles = qa.test_files
     .map((f) => ({ ...f, path: normalizeRepoPath(f.path) }))
     .filter((f) => isValidRepoPath(f.path));
