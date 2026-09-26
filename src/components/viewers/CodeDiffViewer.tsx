@@ -6,6 +6,7 @@ import clsx from "clsx";
 import type { FileChange } from "@/lib/types";
 import { buildFileTree, type TreeNode } from "@/lib/fileTree";
 import { diffLines } from "@/lib/diffLines";
+import { isTestFilePath } from "@/lib/paths";
 
 interface CodeDiffViewerProps {
   baselinePaths: string[];
@@ -81,15 +82,27 @@ function TreeRow({
 export default function CodeDiffViewer({ baselinePaths, changes }: CodeDiffViewerProps) {
   const [activeTab, setActiveTab] = useState<string>("tree");
 
-  const changedPaths = useMemo(() => new Set(changes.map((c) => c.path)), [changes]);
+  // QA/시나리오 테스트용으로 생성된 파일(Jest *.test.ts(x), JUnit src/test/)은
+  // 실제 운영 코드가 아니므로 여기서는 비교 대상에서 제외 — "AI 시나리오
+  // 테스트"/"테스트 뷰어" 탭에서 계속 확인 가능하니 여기 있을 필요는 없다.
+  const productionChanges = useMemo(() => changes.filter((c) => !isTestFilePath(c.path)), [changes]);
+  const productionBaselinePaths = useMemo(
+    () => baselinePaths.filter((p) => !isTestFilePath(p)),
+    [baselinePaths]
+  );
+
+  const changedPaths = useMemo(
+    () => new Set(productionChanges.map((c) => c.path)),
+    [productionChanges]
+  );
   const allPaths = useMemo(() => {
-    const set = new Set([...baselinePaths, ...changes.map((c) => c.path)]);
+    const set = new Set([...productionBaselinePaths, ...productionChanges.map((c) => c.path)]);
     return Array.from(set);
-  }, [baselinePaths, changes]);
+  }, [productionBaselinePaths, productionChanges]);
   const tree = useMemo(() => buildFileTree(allPaths, changedPaths), [allPaths, changedPaths]);
 
-  const activeChange = changes.find((c) => c.path === activeTab);
-  const openTabs = changes.slice(0, 6);
+  const activeChange = productionChanges.find((c) => c.path === activeTab);
+  const openTabs = productionChanges.slice(0, 6);
 
   return (
     <div className="flex h-full flex-col bg-code-panel text-gray-200">
