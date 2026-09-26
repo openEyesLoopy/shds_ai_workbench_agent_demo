@@ -4,7 +4,17 @@ import type {
   FileChange,
   QaAutomatedTest,
   SastResult,
+  SourceFile,
 } from "@/lib/types";
+
+/** Renders fetched CLAUDE.md/AGENTS.md/eslint-config-style project rule files as a prompt block, or "" when none exist. */
+function buildProjectRulesBlock(projectRules: SourceFile[]): string {
+  if (projectRules.length === 0) return "";
+  const rulesBlock = projectRules
+    .map((f) => `### ${f.path}\n\`\`\`\n${f.content}\n\`\`\``)
+    .join("\n\n");
+  return `\n\n## 대상 프로젝트에 정의된 규칙 (반드시 준수 — 아래 일반 규칙보다 우선 적용)\n${rulesBlock}`;
+}
 
 export const ANALYZE_SYSTEM_PROMPT = `당신은 "Agent Workbench AI"의 기획 분석 및 코드 생성 엔진입니다.
 대상 코드베이스는 다음 두 앱으로 구성된 데모 프로젝트입니다:
@@ -32,6 +42,7 @@ export const ANALYZE_SYSTEM_PROMPT = `당신은 "Agent Workbench AI"의 기획 �
   - Java에서 새로 추가/변경하는 메서드나 빈은 private으로 완전히 감추지 말고, Mockito로 목킹·직접 호출이 가능하도록 생성자 주입(constructor injection)과 테스트 가능한 접근 제어자를 사용하세요.
   - 새로 렌더링되는 UI 요소(리스트 항목, 테이블 행, 상태/배지, 에러 메시지 등)에는 'data-testid' 또는 명확한 'role'/'aria-label'을 부여하세요. 식별자 없이 텍스트 내용에만 의존하면 React Testing Library 검증 근거가 약해져 FAIL 판정을 받기 쉽습니다.
 - 보안 모범 사례를 따르세요: 시크릿/토큰을 하드코딩하지 말고, 사용자 입력을 그대로 innerHTML/eval에 넣지 말고, SQL은 파라미터 바인딩을 사용하세요. 프론트엔드에서 API 호출 URL을 만들 때 NEXT_PUBLIC_* 같은 환경변수를 검증 없이 그대로 fetch base URL로 사용하지 마세요 — 상대 경로를 쓰거나, 반드시 절대 URL이 필요하면 허용된 값인지 확인하는 로직을 두세요. (이후 별도의 독립 QA 모듈이 당신의 결과물을 적대적으로 재검증합니다.)
+- 사용자 프롬프트에 "대상 프로젝트에 정의된 규칙" 섹션(CLAUDE.md/AGENTS.md/eslint 설정 등, 대상 저장소에서 직접 가져온 내용)이 포함되어 있다면, 이는 이 코드베이스에 실제로 적용되는 규칙이므로 반드시 준수하세요. 위에 나열된 이 시스템 프롬프트의 일반 규칙과 충돌하는 부분이 있다면 그 규칙을 우선하세요. 해당 섹션이 없다면 이 항목은 무시하세요.
 - 응답은 반드시 지정된 JSON 스키마만 출력하고 그 외 설명 텍스트를 포함하지 마세요.`;
 
 export function buildAnalyzeUserPrompt(input: AnalyzeCodegenInput): string {
@@ -43,7 +54,9 @@ export function buildAnalyzeUserPrompt(input: AnalyzeCodegenInput): string {
     ? `\n\n## 참고: 직전 확정된 요구사항(TO-BE)\n${input.previousToBe}\n이번 기획서는 위 상태 위에 이어서 반영되는 변경 사항입니다.`
     : "";
 
-  return `## 업로드된 기획서 (${input.planFileName})\n${input.planText}${previousNote}\n\n## 현재 소스 코드 (AS-IS)\n${filesBlock}`;
+  const rulesBlock = buildProjectRulesBlock(input.projectRules);
+
+  return `## 업로드된 기획서 (${input.planFileName})\n${input.planText}${previousNote}${rulesBlock}\n\n## 현재 소스 코드 (AS-IS)\n${filesBlock}`;
 }
 
 const MENU_TREE_SECTION_SCHEMA = {
@@ -145,10 +158,12 @@ export const QA_SYSTEM_PROMPT = `너는 프론트엔드(Next.js/TypeScript) 및 
 [3단계: 최종 결과 리포트]
 - summary.status는 vulnerability_count가 0이고 모든 automated_tests가 PASS일 때만 "SUCCESS", 그렇지 않으면 "FAILED"로 설정해.
 - fix_summary에는 이번 조치에서 실제로 무엇을 어떻게, 왜 고쳤는지(또는 고칠 필요가 없었는지) 1~3문장의 한국어로 요약해. 사용자 프롬프트에 "이전 시도에서 실패해 반영이 차단된 항목"이 포함되어 있다면, 그 각 항목을 이번에 구체적으로 어떻게 해결했는지 반드시 명시해 — 이 요약은 최종적으로 사용자에게 "무엇이 왜 바뀌었는지" 설명하는 화면에 그대로 노출된다.
+- 사용자 프롬프트에 "대상 프로젝트에 정의된 규칙" 섹션이 포함되어 있다면, fixed_files/test_files를 작성할 때도 그 규칙(컴포넌트 사용법, 데이터 파일 구조 등)을 계속 지켜야 해 — 보안/테스트를 이유로 그 규칙을 어기는 방향으로 고치지 마.
 - 아래 JSON 스키마만 정확히 출력하고 그 외 설명 텍스트는 포함하지 마.`;
 
 export function buildQaUserPrompt(
   files: FileChange[],
+  projectRules: SourceFile[],
   previousFailures?: { sast: SastResult[]; failedTests: QaAutomatedTest[] }
 ): string {
   const filesBlock = files
@@ -174,7 +189,9 @@ export function buildQaUserPrompt(
       ].join("\n")}`
     : "";
 
-  return `## 검증 대상 변경 파일 (BEFORE/AFTER)\n${filesBlock}${failureBlock}`;
+  const rulesBlock = buildProjectRulesBlock(projectRules);
+
+  return `## 검증 대상 변경 파일 (BEFORE/AFTER)\n${filesBlock}${failureBlock}${rulesBlock}`;
 }
 
 export const QA_JSON_SCHEMA = {

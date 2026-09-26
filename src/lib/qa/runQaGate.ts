@@ -41,6 +41,7 @@ export async function runQaGate(
   initialFiles: FileChange[],
   initialDiffs: DiffEntry[],
   baselineFiles: SourceFile[],
+  projectRules: SourceFile[],
   seedFailures?: { sast: SastResult[]; failedTests: QaAutomatedTest[] }
 ): Promise<QaGateResult> {
   let files = initialFiles;
@@ -55,7 +56,7 @@ export async function runQaGate(
 
   do {
     attempts++;
-    const qaOutput = await provider.runQaAudit({ files, previousFailures });
+    const qaOutput = await provider.runQaAudit({ files, projectRules, previousFailures });
     const applied = applyQaOutput(files, diffs, qaOutput);
     files = applied.files;
     diffs = applied.diffs;

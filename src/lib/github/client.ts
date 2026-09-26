@@ -5,6 +5,17 @@ const SOURCE_PREFIXES = ["demo-front/src", "demo-back/src"];
 const SOURCE_EXTENSIONS = [".ts", ".tsx", ".js", ".jsx", ".java", ".css", ".json"];
 const EXTRA_FILES = ["demo-front/package.json", "demo-back/pom.xml"];
 
+// Project-defined convention files — not application source, so they're kept
+// out of listSourceFiles' ADD/MODIFY/DELETE candidate pool and fetched
+// separately as read-only context for the LLM to follow (see prompts.ts).
+const PROJECT_RULE_FILE_CANDIDATES = [
+  "demo-front/CLAUDE.md",
+  "demo-front/AGENTS.md",
+  "demo-front/eslint.config.mjs",
+  "demo-back/CLAUDE.md",
+  "demo-back/AGENTS.md",
+];
+
 let cachedClient: Octokit | null = null;
 
 function octokit(): Octokit {
@@ -110,6 +121,34 @@ export async function listSourceFiles(
       if (Array.isArray(data) || data.type !== "file" || !data.content) return null;
       const content = Buffer.from(data.content, "base64").toString("utf-8");
       return { path, content };
+    })
+  );
+  return fetched.filter((f): f is SourceFile => f !== null);
+}
+
+/**
+ * Fetches whichever of PROJECT_RULE_FILE_CANDIDATES actually exist in the
+ * target repo (not every repo/branch has all of them) — CLAUDE.md/AGENTS.md/
+ * eslint config content the analysis and QA prompts must follow.
+ */
+export async function listProjectRules(
+  owner: string,
+  repo: string,
+  ref: string
+): Promise<SourceFile[]> {
+  const client = octokit();
+  const fetched = await Promise.all(
+    PROJECT_RULE_FILE_CANDIDATES.map(async (path) => {
+      try {
+        const { data } = await client.repos.getContent({ owner, repo, path, ref });
+        if (Array.isArray(data) || data.type !== "file" || !data.content) return null;
+        const content = Buffer.from(data.content, "base64").toString("utf-8");
+        return { path, content };
+      } catch (err: unknown) {
+        const status = (err as { status?: number }).status;
+        if (status === 404) return null;
+        throw err;
+      }
     })
   );
   return fetched.filter((f): f is SourceFile => f !== null);

@@ -1,6 +1,6 @@
 import { NextRequest, NextResponse } from "next/server";
 import { getSettings } from "@/lib/store/settingsStore";
-import { commitFiles, getTestAheadCount, listSourceFiles, repoCommitUrl, resolveBaselineBranch } from "@/lib/github/client";
+import { commitFiles, getTestAheadCount, listProjectRules, listSourceFiles, repoCommitUrl, resolveBaselineBranch } from "@/lib/github/client";
 import { waitForVercelDeployment } from "@/lib/vercel/client";
 import { getLlmProvider } from "@/lib/llm";
 import { runQaGate } from "@/lib/qa/runQaGate";
@@ -51,17 +51,17 @@ export async function POST(request: NextRequest) {
     const provider = getLlmProvider(settings.llmProvider, settings);
 
     const baselineBranch = await resolveBaselineBranch(settings.githubOwner, settings.githubRepo);
-    const baselineFiles = await listSourceFiles(
-      settings.githubOwner,
-      settings.githubRepo,
-      baselineBranch
-    );
+    const [baselineFiles, projectRules] = await Promise.all([
+      listSourceFiles(settings.githubOwner, settings.githubRepo, baselineBranch),
+      listProjectRules(settings.githubOwner, settings.githubRepo, baselineBranch),
+    ]);
 
     const { passed, files: fileChanges, diffs, qa, sast } = await runQaGate(
       provider,
       body.files,
       body.diffs,
       baselineFiles,
+      projectRules,
       body.previousFailures
     );
     const resource = computeResourceStats(baselineFiles, fileChanges);

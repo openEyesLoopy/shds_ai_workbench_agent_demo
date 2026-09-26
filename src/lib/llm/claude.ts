@@ -49,7 +49,10 @@ export class ClaudeProvider implements LlmProvider {
       max_tokens: 32000,
       system: QA_SYSTEM_PROMPT,
       messages: [
-        { role: "user", content: buildQaUserPrompt(input.files, input.previousFailures) },
+        {
+          role: "user",
+          content: buildQaUserPrompt(input.files, input.projectRules, input.previousFailures),
+        },
       ],
       output_config: { format: zodOutputFormat(QaAuditSchema) },
     });

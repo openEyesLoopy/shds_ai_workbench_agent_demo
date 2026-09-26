@@ -47,6 +47,8 @@ export interface AnalyzeCodegenInput {
   planText: string;
   planFileName: string;
   sourceFiles: SourceFile[];
+  /** Project-defined convention files (CLAUDE.md/AGENTS.md/eslint config, ...) fetched from the target repo — must be followed, taking precedence over generic conventions. */
+  projectRules: SourceFile[];
   previousToBe?: string;
 }
 
@@ -68,6 +70,8 @@ export interface SastResult {
 /** Independent QA & security review of a generated diff — see lib/llm/prompts.ts QA_SYSTEM_PROMPT. */
 export interface QaAuditInput {
   files: FileChange[];
+  /** Project-defined convention files (CLAUDE.md/AGENTS.md/eslint config, ...) the fixed/test files must still respect. */
+  projectRules: SourceFile[];
   /** When retrying after a blocked finalize, the exact items that must be resolved this time. */
   previousFailures?: {
     sast: SastResult[];

@@ -3,6 +3,7 @@ import { parsePlanDocument } from "@/lib/parsers";
 import { getSettings } from "@/lib/store/settingsStore";
 import {
   getTestAheadCount,
+  listProjectRules,
   listSourceFiles,
   repoTreeUrl,
   resolveBaselineBranch,
@@ -54,17 +55,17 @@ export async function POST(request: NextRequest) {
     const aheadByPromise = getTestAheadCount(settings.githubOwner, settings.githubRepo);
 
     const baselineBranch = await resolveBaselineBranch(settings.githubOwner, settings.githubRepo);
-    const baselineFiles = await listSourceFiles(
-      settings.githubOwner,
-      settings.githubRepo,
-      baselineBranch
-    );
+    const [baselineFiles, projectRules] = await Promise.all([
+      listSourceFiles(settings.githubOwner, settings.githubRepo, baselineBranch),
+      listProjectRules(settings.githubOwner, settings.githubRepo, baselineBranch),
+    ]);
 
     const provider = getLlmProvider(settings.llmProvider, settings);
     const analysis = await provider.analyzeAndGenerate({
       planText,
       planFileName: file.name,
       sourceFiles: baselineFiles,
+      projectRules,
       previousToBe: typeof previousToBe === "string" && previousToBe ? previousToBe : undefined,
     });
 
