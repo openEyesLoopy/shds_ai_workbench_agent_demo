@@ -152,14 +152,29 @@ export default function Home() {
       const result = data as TestReflectResult;
       setTestReflectResult(result);
       // /api/test-reflect resolves as soon as the commit succeeds — it no
-      // longer waits for the Vercel/Render redeploy itself (that used to
-      // routinely exceed Vercel Hobby's 60s function cap). Poll for it here
-      // instead, merging live status into the already-shown result so the
-      // loading state stays up until both are actually done.
+      // longer waits for the Vercel/Render redeploy, or generates the 업무
+      // 비즈니스 diagram, inline (stacking either on top of the QA audit call
+      // routinely exceeded Vercel Hobby's 60s function cap). Both happen here
+      // instead, in parallel, merging into the already-shown result so the
+      // loading state stays up until everything is actually done.
       if (result.ok && result.commitSha) {
-        await pollDeployStatus("test", result.commitSha, (status) => {
-          setTestReflectResult((prev) => (prev ? { ...prev, ...status } : prev));
-        });
+        await Promise.all([
+          pollDeployStatus("test", result.commitSha, (status) => {
+            setTestReflectResult((prev) => (prev ? { ...prev, ...status } : prev));
+          }),
+          fetch("/api/business-diagram", {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({ files: result.files, asIs: base.asIs, toBe: base.toBe }),
+          })
+            .then((r) => (r.ok ? r.json() : undefined))
+            .then((businessDiagram) => {
+              if (businessDiagram) {
+                setTestReflectResult((prev) => (prev ? { ...prev, businessDiagram } : prev));
+              }
+            })
+            .catch(() => undefined),
+        ]);
       }
     } catch (err) {
       const message =

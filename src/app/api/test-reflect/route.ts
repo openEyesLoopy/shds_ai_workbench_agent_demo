@@ -5,7 +5,6 @@ import { getLlmProvider } from "@/lib/llm";
 import { runQaGate } from "@/lib/qa/runQaGate";
 import { computeResourceStats } from "@/lib/resourceStats";
 import type {
-  BusinessDiagramOutput,
   DiffEntry,
   FileChange,
   QaAutomatedTest,
@@ -103,12 +102,12 @@ export async function POST(request: NextRequest) {
         `AI 분석 반영: ${body.planFileName} (v${fromVersion} → v${toVersion})`
       );
 
-      // One quick LLM call — fine to keep inline rather than deferring to
-      // another round trip like the Vercel/Render wait.
-      const businessDiagram = await provider
-        .generateBusinessDiagram({ files: fileChanges, asIs: body.asIs, toBe: body.toBe })
-        .catch((): BusinessDiagramOutput | undefined => undefined);
-
+      // The "업무 비즈니스" diagram is its own LLM call (see
+      // /api/business-diagram) — stacking it on top of the QA audit call in
+      // this same request was, together, routinely enough to exceed Vercel
+      // Hobby's 60s function cap even after everything else here got fast.
+      // The client fetches it separately, in parallel with the deploy-status
+      // poll, once this response comes back.
       const result: TestReflectResult = {
         ok: true,
         qa,
@@ -119,7 +118,6 @@ export async function POST(request: NextRequest) {
         commitSha: commitResult.sha,
         branch: "test",
         repoUrl: repoCommitUrl(settings.githubOwner, settings.githubRepo, commitResult.sha),
-        businessDiagram,
       };
       return NextResponse.json(result);
     } catch (err) {
