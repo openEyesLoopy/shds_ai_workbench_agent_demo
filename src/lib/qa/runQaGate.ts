@@ -10,7 +10,7 @@ import type {
 import { applyQaOutput } from "./applyQaOutput";
 import { runSast } from "@/lib/sast/scan";
 import { checkMavenCompile } from "./mavenCompileCheck";
-import { isValidRepoPath, normalizeRepoPath } from "@/lib/paths";
+import { isTestFilePath, isValidRepoPath, normalizeRepoPath } from "@/lib/paths";
 
 export interface QaGateResult {
   passed: boolean;
@@ -56,7 +56,10 @@ export async function runQaGate(
   const applied = applyQaOutput(files, diffs, qaOutput);
   const resultFiles = applied.files;
   const resultDiffs = applied.diffs;
-  const sast = runSast(resultFiles);
+  // Test files aren't deployed/executed in production — a mock secret or a
+  // SQL-shaped string in a test fixture would otherwise trip these
+  // production-vulnerability patterns and block a reflect over nothing.
+  const sast = runSast(resultFiles.filter((f) => !isTestFilePath(f.path)));
   const mavenCheck = await checkMavenCompile(baselineFiles, resultFiles);
   if (mavenCheck) sast.push(mavenCheck);
   let automatedTests = qaOutput.automated_tests;
