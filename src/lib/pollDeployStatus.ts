@@ -15,7 +15,6 @@ const RENDER_TERMINAL_STATUSES = new Set([
 ]);
 
 const POLL_INTERVAL_MS = 4000;
-const MAX_POLL_MS = 4 * 60 * 1000;
 
 function isVercelDone(v: VercelDeployStatus): boolean {
   return !v.configured || (v.state !== null && VERCEL_TERMINAL_STATES.has(v.state));
@@ -27,8 +26,11 @@ function isRenderDone(r: RenderDeployStatus): boolean {
 
 /**
  * Repeats a one-shot /api/deploy-status check every few seconds until both
- * Vercel and Render reach a terminal state (or this gives up after
- * MAX_POLL_MS and marks whichever side never got there as `timedOut`).
+ * Vercel and Render reach a terminal state. Polls indefinitely — a slower
+ * rebuild (e.g. a second/third reflect in a row, a cold Render instance)
+ * must not get dropped just because an arbitrary cutoff elapsed while the
+ * real deploy was still running. A transient fetch error is swallowed and
+ * retried rather than aborting the wait.
  *
  * This exists because this app runs on Vercel's Hobby plan, which kills
  * serverless functions at 60s — 테스트반영/운영반영/초기화 used to block on a
@@ -38,40 +40,36 @@ function isRenderDone(r: RenderDeployStatus): boolean {
  * (here) does the waiting instead, one short HTTP call at a time, so no
  * single request ever has to stay open longer than one quick round trip.
  *
- * `onUpdate` fires after every poll (not just at the end) so the caller can
- * show live progress — see PipelineDashboard/ProductionReflectView's use of
- * this via page.tsx.
+ * `onUpdate` fires after every successful poll (not just at the end) so the
+ * caller can show live progress — see PipelineDashboard/ProductionReflectView's
+ * use of this via page.tsx.
  */
 export async function pollDeployStatus(
   target: "test" | "prod",
   sha: string,
   onUpdate: (status: DeployStatusResult) => void
 ): Promise<DeployStatusResult> {
-  const deadline = Date.now() + MAX_POLL_MS;
   let last: DeployStatusResult = {
     vercel: { configured: false, found: false, state: null, url: null, timedOut: false },
     render: { configured: false, found: false, status: null, timedOut: false },
   };
 
-  while (Date.now() < deadline) {
-    const res = await fetch(
-      `/api/deploy-status?target=${target}&sha=${encodeURIComponent(sha)}`,
-      { cache: "no-store" }
-    );
-    if (res.ok) {
-      last = (await res.json()) as DeployStatusResult;
-      onUpdate(last);
-      if (isVercelDone(last.vercel) && isRenderDone(last.render)) {
-        return last;
+  for (;;) {
+    try {
+      const res = await fetch(
+        `/api/deploy-status?target=${target}&sha=${encodeURIComponent(sha)}`,
+        { cache: "no-store" }
+      );
+      if (res.ok) {
+        last = (await res.json()) as DeployStatusResult;
+        onUpdate(last);
+        if (isVercelDone(last.vercel) && isRenderDone(last.render)) {
+          return last;
+        }
       }
+    } catch {
+      // transient network error — keep polling instead of giving up
     }
     await new Promise((resolve) => setTimeout(resolve, POLL_INTERVAL_MS));
   }
-
-  const timedOut: DeployStatusResult = {
-    vercel: isVercelDone(last.vercel) ? last.vercel : { ...last.vercel, timedOut: true },
-    render: isRenderDone(last.render) ? last.render : { ...last.render, timedOut: true },
-  };
-  onUpdate(timedOut);
-  return timedOut;
 }
