@@ -19,6 +19,22 @@ const PROJECT_RULE_FILE_CANDIDATES = [
 
 let cachedClient: Octokit | null = null;
 
+// Octokit has no built-in request timeout — a stalled connection (network
+// blip, GitHub-side hiccup) just hangs the underlying fetch indefinitely,
+// and since listSourceFiles/listProjectRules fire many of these inside a
+// single Promise.all, one hung call silently blocks the whole batch with no
+// error and no log output until Vercel's hard 60s cap kills the function —
+// a 500-class failure masquerading as a mystery 504. Wrapping every call's
+// fetch with its own fresh AbortSignal.timeout turns that into a fast,
+// visible RequestError well within the request's time budget instead.
+const REQUEST_TIMEOUT_MS = 20_000;
+
+function timedFetch(url: string | URL | Request, init?: RequestInit): Promise<Response> {
+  const timeoutSignal = AbortSignal.timeout(REQUEST_TIMEOUT_MS);
+  const signal = init?.signal ? AbortSignal.any([init.signal, timeoutSignal]) : timeoutSignal;
+  return fetch(url, { ...init, signal });
+}
+
 function octokit(): Octokit {
   if (cachedClient) return cachedClient;
   const token = process.env.GITHUB_TOKEN;
@@ -27,7 +43,7 @@ function octokit(): Octokit {
       "GITHUB_TOKEN이 설정되어 있지 않습니다. .env.local에 repo 쓰기 권한이 있는 GitHub Personal Access Token을 추가해주세요."
     );
   }
-  cachedClient = new Octokit({ auth: token });
+  cachedClient = new Octokit({ auth: token, request: { fetch: timedFetch } });
   return cachedClient;
 }
 

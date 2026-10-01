@@ -44,6 +44,10 @@ interface TestReflectRequestBody {
  * long the actual redeploy takes.
  */
 export async function POST(request: NextRequest) {
+  // See runQaGate.ts's comment — these let a 60s-timeout invocation's Vercel
+  // logs show exactly how far it got (GitHub fetch vs QA/LLM vs commit)
+  // instead of just the bare "Task timed out" with no breakdown.
+  const t0 = Date.now();
   try {
     const body = (await request.json()) as TestReflectRequestBody;
     if (!body.files?.length) {
@@ -58,6 +62,9 @@ export async function POST(request: NextRequest) {
       listSourceFiles(settings.githubOwner, settings.githubRepo, baselineBranch),
       listProjectRules(settings.githubOwner, settings.githubRepo, baselineBranch),
     ]);
+    console.log(
+      `[test-reflect] baseline fetched @ ${Date.now() - t0}ms (${baselineFiles.length} source files, ${projectRules.length} rule files)`
+    );
 
     const { passed, files: fileChanges, diffs, qa, sast } = await runQaGate(
       provider,
@@ -67,6 +74,7 @@ export async function POST(request: NextRequest) {
       projectRules,
       body.previousFailures
     );
+    console.log(`[test-reflect] QA gate finished @ ${Date.now() - t0}ms (passed=${passed})`);
     const resource = computeResourceStats(baselineFiles, fileChanges);
 
     if (!passed) {
@@ -100,6 +108,7 @@ export async function POST(request: NextRequest) {
         fileChanges,
         `AI 분석 반영: ${body.planFileName} (v${fromVersion} → v${toVersion})`
       );
+      console.log(`[test-reflect] commit finished @ ${Date.now() - t0}ms`);
 
       // The "업무 비즈니스" diagram is its own LLM call (see
       // /api/business-diagram) — stacking it on top of the QA audit call in

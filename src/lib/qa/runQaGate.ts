@@ -84,7 +84,16 @@ export async function runQaGate(
     .map((d) => ({ ...d, path: normalizeRepoPath(d.path) }))
     .filter((d) => isValidRepoPath(d.path));
 
+  // Vercel kills this whole request at a hard 60s (route.ts's maxDuration
+  // can't raise that) — these timings exist so a timed-out invocation's
+  // Vercel logs show exactly which step was still in flight when it got
+  // killed, instead of just "Task timed out after 60 seconds" with no way
+  // to tell the LLM call apart from GitHub/Maven/commit latency.
+  const llmStart = Date.now();
   const qaOutput = await provider.runQaAudit({ files, projectRules, previousFailures: seedFailures });
+  console.log(
+    `[runQaGate] LLM QA audit done in ${Date.now() - llmStart}ms (${files.length} files, ${projectRules.length} rules)`
+  );
   const applied = applyQaOutput(files, diffs, qaOutput);
   const resultFiles = applied.files;
   const resultDiffs = applied.diffs;
@@ -92,7 +101,9 @@ export async function runQaGate(
   // SQL-shaped string in a test fixture would otherwise trip these
   // production-vulnerability patterns and block a reflect over nothing.
   const sast = runSast(resultFiles.filter((f) => !isTestFilePath(f.path)));
+  const mavenStart = Date.now();
   const mavenCheck = await checkMavenCompile(baselineFiles, resultFiles);
+  console.log(`[runQaGate] Maven compile check done in ${Date.now() - mavenStart}ms`);
   if (mavenCheck) sast.push(mavenCheck);
   let automatedTests = carryOverPassedTests(
     seedFailures?.previouslyPassed,
