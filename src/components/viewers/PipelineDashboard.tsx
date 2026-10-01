@@ -36,6 +36,9 @@ interface PipelineDashboardProps {
   /** How many "FAILED 항목 자동 수정" rounds have fired automatically (without the user clicking) for the current blocked result, and the cap before it hands control back to the user. */
   autoFixRound?: number;
   maxAutoFixRounds?: number;
+  /** How many times /api/test-reflect itself has been silently retried after a 502/504 (Vercel's hard 60s function cap), and the cap before that surfaces as an actual error. */
+  gatewayRetryCount?: number;
+  maxGatewayRetryRounds?: number;
 
   /** Baseline file list for the "코드 비교" tree — the changed files themselves come from testReflectResult. */
   baselinePaths: string[];
@@ -76,9 +79,16 @@ function ScenarioTestPane({ qa }: { qa: QaAuditResult }) {
       </div>
       <p className="mb-3 text-[11px] text-gray-400">{qa.summary.test_progress}</p>
       <div className="flex flex-col gap-2.5">
-        {tests.map((t) => (
+        {tests.map((t, i) => (
           <div
-            key={t.id}
+            // `t.id` is re-minted by the LLM each round and isn't guaranteed
+            // unique once a retry's carried-over (already-PASSed) tests are
+            // merged with this round's freshly-judged ones — a collision
+            // (e.g. both landing on id 1) makes React drop one of the two
+            // rows instead of rendering both, so a test that just finished
+            // via retry can silently vanish from this list. Index is unique
+            // per render since this array is always shown in full.
+            key={`${t.target_file}-${i}`}
             className={clsx(
               "rounded-lg border px-3 py-2.5",
               t.result === "PASS" ? "border-panel-border" : "border-red-200 bg-red-50"
@@ -113,6 +123,8 @@ export default function PipelineDashboard({
   fixError,
   autoFixRound = 0,
   maxAutoFixRounds = 0,
+  gatewayRetryCount = 0,
+  maxGatewayRetryRounds = 0,
   baselinePaths,
 }: PipelineDashboardProps) {
   const autoFixExhausted = autoFixRound >= maxAutoFixRounds;
@@ -130,7 +142,11 @@ export default function PipelineDashboard({
     return (
       <LoadingPane
         title="테스트 반영중..."
-        detail="독립 QA 모듈이 보안 점검·자동화 테스트를 수행하고, 통과 시 test 브랜치에 소스를 반영한 뒤 Vercel(프론트) 재배포와 Render(백엔드) 재기동이 모두 완료되기를 기다리고 있습니다."
+        detail={
+          gatewayRetryCount > 0
+            ? `서버 응답이 지연되어 자동으로 다시 시도하고 있습니다 (${gatewayRetryCount}/${maxGatewayRetryRounds}회)... 화면은 그대로 유지되며 계속 기다리면 됩니다.`
+            : "독립 QA 모듈이 보안 점검·자동화 테스트를 수행하고, 통과 시 test 브랜치에 소스를 반영한 뒤 Vercel(프론트) 재배포와 Render(백엔드) 재기동이 모두 완료되기를 기다리고 있습니다."
+        }
       />
     );
   }

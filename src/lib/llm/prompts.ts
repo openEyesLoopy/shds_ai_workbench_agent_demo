@@ -2,8 +2,7 @@ import type {
   AnalyzeCodegenInput,
   BusinessDiagramInput,
   FileChange,
-  QaAutomatedTest,
-  SastResult,
+  QaPreviousAttempt,
   SourceFile,
 } from "@/lib/types";
 
@@ -174,7 +173,7 @@ export const QA_SYSTEM_PROMPT = `너는 프론트엔드(Next.js/TypeScript) 및 
 export function buildQaUserPrompt(
   files: FileChange[],
   projectRules: SourceFile[],
-  previousFailures?: { sast: SastResult[]; failedTests: QaAutomatedTest[] }
+  previousFailures?: QaPreviousAttempt
 ): string {
   const filesBlock = files
     .map((f) => {
@@ -199,9 +198,19 @@ export function buildQaUserPrompt(
       ].join("\n")}`
     : "";
 
+  const previouslyPassed = previousFailures?.previouslyPassed ?? [];
+  const passedBlock =
+    previouslyPassed.length > 0
+      ? `\n\n## 이전 라운드에 이미 PASS로 통과한 시나리오 (재작성·재판정 금지)\n${previouslyPassed
+          .map((t) => `- [테스트 #${t.id}] ${t.target_file} — ${t.scenario}`)
+          .join(
+            "\n"
+          )}\n위 시나리오들은 이미 검증이 끝나 시스템이 그대로 유지한다. 위 목록에 있는 파일은 "이전 시도에서 실패해 반영이 차단된 항목"에 다시 포함되어 있지 않은 한 이번 automated_tests에 다시 쓰거나 재판정하지 마 — 생략해도 된다.`
+      : "";
+
   const rulesBlock = buildProjectRulesBlock(projectRules);
 
-  return `## 검증 대상 변경 파일 (BEFORE/AFTER)\n${filesBlock}${failureBlock}${rulesBlock}`;
+  return `## 검증 대상 변경 파일 (BEFORE/AFTER)\n${filesBlock}${failureBlock}${passedBlock}${rulesBlock}`;
 }
 
 export const QA_JSON_SCHEMA = {

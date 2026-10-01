@@ -1,4 +1,15 @@
 /**
+ * A 502/504 means the platform (Vercel) killed the request before our route
+ * handler ever got to send a response — most commonly its hard serverless
+ * function duration cap, which no `maxDuration` setting can raise past. This
+ * is almost always transient (the next attempt's LLM call may simply be
+ * faster), unlike the other branches below which reflect a real response
+ * from our own code — so callers can single this one out to retry instead of
+ * surfacing it as a terminal failure.
+ */
+export class GatewayTimeoutError extends Error {}
+
+/**
  * Parses a fetch Response as JSON, but tolerates the platform/infra returning
  * something else entirely (a plain-text or HTML error page) instead of the
  * route handler's own JSON — e.g. a payload-too-large rejection or a gateway
@@ -15,7 +26,7 @@ export async function parseJsonResponse<T>(res: Response): Promise<T> {
       throw new Error("업로드한 파일이 너무 큽니다 — 서버가 요청 크기를 거부했습니다.");
     }
     if (res.status === 504 || res.status === 502) {
-      throw new Error("서버 응답 시간이 초과되었습니다. 잠시 후 다시 시도해주세요.");
+      throw new GatewayTimeoutError("서버 응답 시간이 초과되었습니다. 잠시 후 다시 시도해주세요.");
     }
     const snippet = text.trim().slice(0, 200) || "(빈 응답)";
     throw new Error(`서버가 올바른 응답을 반환하지 않았습니다 (HTTP ${res.status}): ${snippet}`);

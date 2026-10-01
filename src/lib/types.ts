@@ -67,16 +67,28 @@ export interface SastResult {
   passed: boolean;
 }
 
+/**
+ * What the QA module already produced in a prior round of the same retry
+ * chain (same blocked 테스트반영 attempt, retried via "FAILED 항목 자동 수정").
+ * `failedTests`/`sast` are what must be resolved this round; `previouslyPassed`
+ * are scenarios that already PASSed and must NOT be re-derived or re-judged —
+ * runQaGate carries them over into the final result as-is regardless of what
+ * the LLM returns for them this round, so a passed scenario is only ever
+ * tested once per retry chain.
+ */
+export interface QaPreviousAttempt {
+  sast: SastResult[];
+  failedTests: QaAutomatedTest[];
+  previouslyPassed: QaAutomatedTest[];
+}
+
 /** Independent QA & security review of a generated diff — see lib/llm/prompts.ts QA_SYSTEM_PROMPT. */
 export interface QaAuditInput {
   files: FileChange[];
   /** Project-defined convention files (CLAUDE.md/AGENTS.md/eslint config, ...) the fixed/test files must still respect. */
   projectRules: SourceFile[];
   /** When retrying after a blocked finalize, the exact items that must be resolved this time. */
-  previousFailures?: {
-    sast: SastResult[];
-    failedTests: QaAutomatedTest[];
-  };
+  previousFailures?: QaPreviousAttempt;
 }
 
 export interface QaAutomatedTest {

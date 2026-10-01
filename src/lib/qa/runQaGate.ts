@@ -4,6 +4,7 @@ import type {
   LlmProvider,
   QaAuditResult,
   QaAutomatedTest,
+  QaPreviousAttempt,
   SastResult,
   SourceFile,
 } from "@/lib/types";
@@ -18,6 +19,37 @@ export interface QaGateResult {
   diffs: DiffEntry[];
   qa: QaAuditResult;
   sast: SastResult[];
+}
+
+/**
+ * A retry round is only ever asked to fix `failedTests`' target files — every
+ * other file's scenarios already PASSed in a prior round of this same retry
+ * chain. The LLM is asked (see prompts.ts) not to re-emit those, but this is
+ * the enforcement: regardless of what it actually returns for an
+ * already-passed, not-currently-failing file, the prior PASS record wins, so
+ * nothing already verified is ever re-tested within the same chain.
+ */
+function carryOverPassedTests(
+  previouslyPassed: QaAutomatedTest[] | undefined,
+  failedTests: QaAutomatedTest[] | undefined,
+  thisRoundTests: QaAutomatedTest[]
+): QaAutomatedTest[] {
+  if (!previouslyPassed?.length) return thisRoundTests;
+
+  const failedTargetFiles = new Set(
+    (failedTests ?? []).map((t) => normalizeRepoPath(t.target_file))
+  );
+  const carriedOver = previouslyPassed.filter(
+    (t) => !failedTargetFiles.has(normalizeRepoPath(t.target_file))
+  );
+  const freshOrRefixed = thisRoundTests.filter(
+    (t) =>
+      failedTargetFiles.has(normalizeRepoPath(t.target_file)) ||
+      !previouslyPassed.some(
+        (p) => normalizeRepoPath(p.target_file) === normalizeRepoPath(t.target_file)
+      )
+  );
+  return [...carriedOver, ...freshOrRefixed];
 }
 
 /**
@@ -38,7 +70,7 @@ export async function runQaGate(
   initialDiffs: DiffEntry[],
   baselineFiles: SourceFile[],
   projectRules: SourceFile[],
-  seedFailures?: { sast: SastResult[]; failedTests: QaAutomatedTest[] }
+  seedFailures?: QaPreviousAttempt
 ): Promise<QaGateResult> {
   // A client retrying a blocked attempt resends its own last-known
   // files/diffs as-is — if an earlier round already let a hallucinated
@@ -62,7 +94,11 @@ export async function runQaGate(
   const sast = runSast(resultFiles.filter((f) => !isTestFilePath(f.path)));
   const mavenCheck = await checkMavenCompile(baselineFiles, resultFiles);
   if (mavenCheck) sast.push(mavenCheck);
-  let automatedTests = qaOutput.automated_tests;
+  let automatedTests = carryOverPassedTests(
+    seedFailures?.previouslyPassed,
+    seedFailures?.failedTests,
+    qaOutput.automated_tests
+  );
 
   // `automatedTests.every(...)` on an empty array is vacuously true, so a
   // QA round that produces zero scenarios (seen in practice: it deleted the

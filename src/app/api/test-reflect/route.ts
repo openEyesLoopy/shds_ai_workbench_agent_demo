@@ -7,8 +7,7 @@ import { computeResourceStats } from "@/lib/resourceStats";
 import type {
   DiffEntry,
   FileChange,
-  QaAutomatedTest,
-  SastResult,
+  QaPreviousAttempt,
   TestReflectResult,
 } from "@/lib/types";
 
@@ -27,7 +26,7 @@ interface TestReflectRequestBody {
   asIs: string;
   toBe: string;
   /** Set only when retrying after a previous 테스트반영 attempt was blocked (the "FAILED 항목 자동 수정" button). */
-  previousFailures?: { sast: SastResult[]; failedTests: QaAutomatedTest[] };
+  previousFailures?: QaPreviousAttempt;
 }
 
 /**

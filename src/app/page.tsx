@@ -7,7 +7,7 @@ import EngineToggle from "@/components/EngineToggle";
 import UploadDropzone from "@/components/UploadDropzone";
 import AnalyzingOverlay from "@/components/AnalyzingOverlay";
 import WorkspaceLayout from "@/components/WorkspaceLayout";
-import { parseJsonResponse } from "@/lib/http";
+import { GatewayTimeoutError, parseJsonResponse } from "@/lib/http";
 import { pollDeployStatus } from "@/lib/pollDeployStatus";
 import LeftInfoPanel from "@/components/panels/LeftInfoPanel";
 import RequirementDiffList from "@/components/viewers/RequirementDiffList";
@@ -17,9 +17,8 @@ import type {
   DiffEntry,
   FileChange,
   FinalizeResult,
-  QaAutomatedTest,
+  QaPreviousAttempt,
   ResetResult,
-  SastResult,
   TestReflectResult,
   UploadResult,
 } from "@/lib/types";
@@ -40,6 +39,15 @@ interface TestReflectBase {
 // (one QA pass each), so this caps total unattended LLM calls/cost per
 // blocked run instead of looping forever.
 const MAX_AUTO_FIX_ROUNDS = 3;
+
+// /api/test-reflect runs the QA LLM call + SAST + git commit synchronously,
+// and Vercel Hobby kills serverless functions at a hard 60s regardless of
+// `maxDuration` — no app code can raise that cap. A 502/504 from it almost
+// always just means that one attempt's LLM call ran long, not that anything
+// is actually broken, so retry silently in the background instead of
+// surfacing it as a failure the user has to notice and re-click past.
+const MAX_GATEWAY_RETRY_ROUNDS = 5;
+const GATEWAY_RETRY_DELAY_MS = 3000;
 
 // 테스트뷰어 is a tab inside the step-3 dashboard now, not its own step.
 // Step 3 (테스트반영) and step 4 (최종 반영/운영반영) are separate screens.
@@ -64,6 +72,7 @@ export default function Home() {
   const [isFixing, setIsFixing] = useState(false);
   const [fixError, setFixError] = useState<string | null>(null);
   const [autoFixRound, setAutoFixRound] = useState(0);
+  const [gatewayRetryCount, setGatewayRetryCount] = useState(0);
 
   const hasResult = uploadResult !== null;
 
@@ -131,7 +140,7 @@ export default function Home() {
    */
   async function runTestReflect(
     base: TestReflectBase,
-    previousFailures?: { sast: SastResult[]; failedTests: QaAutomatedTest[] }
+    previousFailures?: QaPreviousAttempt
   ) {
     const isRetry = Boolean(previousFailures);
     if (isRetry) {
@@ -141,14 +150,27 @@ export default function Home() {
       setIsTestReflecting(true);
       setTestReflectError(null);
     }
+    setGatewayRetryCount(0);
     try {
-      const res = await fetch("/api/test-reflect", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ ...base, previousFailures }),
-      });
-      const data = await parseJsonResponse<TestReflectResult | { error: string }>(res);
-      if (!res.ok) throw new Error("error" in data ? data.error : "테스트 브랜치 반영 중 오류가 발생했습니다.");
+      let data: TestReflectResult | { error: string };
+      let res: Response;
+      for (let attempt = 0; ; attempt++) {
+        res = await fetch("/api/test-reflect", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ ...base, previousFailures }),
+        });
+        try {
+          data = await parseJsonResponse<TestReflectResult | { error: string }>(res);
+          break;
+        } catch (err) {
+          const isLastAttempt = attempt >= MAX_GATEWAY_RETRY_ROUNDS - 1;
+          if (!(err instanceof GatewayTimeoutError) || isLastAttempt) throw err;
+          setGatewayRetryCount(attempt + 1);
+          await new Promise((resolve) => setTimeout(resolve, GATEWAY_RETRY_DELAY_MS));
+        }
+      }
+      if (!res!.ok) throw new Error("error" in data ? data.error : "테스트 브랜치 반영 중 오류가 발생했습니다.");
       const result = data as TestReflectResult;
       setTestReflectResult(result);
       // /api/test-reflect resolves as soon as the commit succeeds — it no
@@ -304,6 +326,10 @@ export default function Home() {
     if (!uploadResult || !testReflectResult || testReflectResult.ok) return;
     const failedSast = testReflectResult.sast.filter((r) => !r.passed);
     const failedTests = testReflectResult.qa.automated_tests.filter((t) => t.result !== "PASS");
+    // Scenarios that already PASSed in the previous round of this same retry
+    // chain — passed through so runQaGate carries them over as-is instead of
+    // the LLM re-deriving/re-judging them this round.
+    const previouslyPassed = testReflectResult.qa.automated_tests.filter((t) => t.result === "PASS");
     void runTestReflect(
       {
         planFileName: uploadResult.planFileName,
@@ -312,7 +338,7 @@ export default function Home() {
         asIs: uploadResult.asIs,
         toBe: uploadResult.toBe,
       },
-      { sast: failedSast, failedTests }
+      { sast: failedSast, failedTests, previouslyPassed }
     );
   }
 
@@ -375,7 +401,11 @@ export default function Home() {
         {appState === "workspace" && workspaceStep === 2 && isTestReflecting && (
           <AnalyzingOverlay
             title="테스트반영 진행 중..."
-            detail="보안 점검·자동화 테스트 통과 후 test 브랜치에 반영하고, Vercel 재기동이 완료될 때까지 기다리고 있습니다."
+            detail={
+              gatewayRetryCount > 0
+                ? `서버 응답이 지연되어 자동으로 다시 시도하고 있습니다 (${gatewayRetryCount}/${MAX_GATEWAY_RETRY_ROUNDS}회)... 화면은 그대로 유지되며 계속 기다리면 됩니다.`
+                : "보안 점검·자동화 테스트 통과 후 test 브랜치에 반영하고, Vercel 재기동이 완료될 때까지 기다리고 있습니다."
+            }
           />
         )}
 
@@ -467,6 +497,8 @@ export default function Home() {
                 fixError={fixError}
                 autoFixRound={autoFixRound}
                 maxAutoFixRounds={MAX_AUTO_FIX_ROUNDS}
+                gatewayRetryCount={gatewayRetryCount}
+                maxGatewayRetryRounds={MAX_GATEWAY_RETRY_ROUNDS}
               />
             )}
             {workspaceStep === 4 && testReflectResult?.ok && (
