@@ -1,23 +1,6 @@
 import { RefreshCw, ShieldAlert } from "lucide-react";
 import clsx from "clsx";
-import type {
-  QaAuditResult,
-  RenderDeployStatus,
-  ResourceStats,
-  SastResult,
-  VercelDeployStatus,
-} from "@/lib/types";
-
-// Mirrors lib/render/client.ts's FAILED_STATUSES — kept as a plain literal
-// list here (rather than importing that module) so this client component
-// doesn't pull in its fetch/process.env-based polling code.
-const RENDER_FAILED_STATUSES = new Set([
-  "deactivated",
-  "build_failed",
-  "update_failed",
-  "canceled",
-  "pre_deploy_failed",
-]);
+import type { QaAuditResult, ResourceStats, SastResult } from "@/lib/types";
 
 export function StatTag({ delta, unit }: { delta: number; unit: string }) {
   const improved = delta <= 0;
@@ -33,65 +16,6 @@ export function StatTag({ delta, unit }: { delta: number; unit: string }) {
       {unit} {improved ? "최적화" : "증가"}
     </span>
   );
-}
-
-export function VercelStatusBadge({ vercel }: { vercel: VercelDeployStatus | undefined }) {
-  if (!vercel?.configured) return null;
-
-  if (vercel.state === "READY") {
-    return (
-      <a
-        href={vercel.url ?? undefined}
-        target="_blank"
-        rel="noreferrer"
-        className="inline-flex items-center gap-1 rounded bg-emerald-100 px-1.5 py-0.5 font-medium text-emerald-700 hover:underline"
-      >
-        ▲ Vercel 배포 완료
-      </a>
-    );
-  }
-  if (vercel.state === "ERROR" || vercel.state === "CANCELED") {
-    return (
-      <span className="inline-flex items-center gap-1 rounded bg-red-100 px-1.5 py-0.5 font-medium text-red-700">
-        ▲ Vercel 배포 실패
-      </span>
-    );
-  }
-  if (vercel.timedOut) {
-    return (
-      <span className="inline-flex items-center gap-1 rounded bg-amber-100 px-1.5 py-0.5 font-medium text-amber-700">
-        ▲ Vercel 배포 확인 시간 초과 — 계속 진행 중일 수 있습니다
-      </span>
-    );
-  }
-  return null;
-}
-
-export function RenderStatusBadge({ render }: { render: RenderDeployStatus | undefined }) {
-  if (!render?.configured) return null;
-
-  if (render.status === "live") {
-    return (
-      <span className="inline-flex items-center gap-1 rounded bg-emerald-100 px-1.5 py-0.5 font-medium text-emerald-700">
-        ⬤ Render 서버 재기동 완료
-      </span>
-    );
-  }
-  if (render.status && RENDER_FAILED_STATUSES.has(render.status)) {
-    return (
-      <span className="inline-flex items-center gap-1 rounded bg-red-100 px-1.5 py-0.5 font-medium text-red-700">
-        ⬤ Render 배포 실패
-      </span>
-    );
-  }
-  if (render.timedOut) {
-    return (
-      <span className="inline-flex items-center gap-1 rounded bg-amber-100 px-1.5 py-0.5 font-medium text-amber-700">
-        ⬤ Render 배포 확인 시간 초과 — 계속 진행 중일 수 있습니다
-      </span>
-    );
-  }
-  return null;
 }
 
 export function LoadingPane({ title, detail }: { title: string; detail: string }) {

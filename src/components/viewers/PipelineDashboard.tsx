@@ -17,12 +17,7 @@ import type { QaAuditResult, TestReflectResult } from "@/lib/types";
 import CodeDiffViewer from "@/components/viewers/CodeDiffViewer";
 import MockupViewer from "@/components/viewers/MockupViewer";
 import BusinessDiagramView from "@/components/viewers/BusinessDiagramView";
-import {
-  LoadingPane,
-  MetricsColumn,
-  RenderStatusBadge,
-  VercelStatusBadge,
-} from "@/components/viewers/dashboardShared";
+import { LoadingPane, MetricsColumn } from "@/components/viewers/dashboardShared";
 
 interface PipelineDashboardProps {
   isTestReflecting: boolean;
@@ -196,8 +191,6 @@ export default function PipelineDashboard({
                 <GitBranch size={12} /> {result.branch} branch
               </span>
               <span>방금 전 반영됨</span>
-              <VercelStatusBadge vercel={result.vercel} />
-              <RenderStatusBadge render={result.render} />
             </p>
           </div>
         </div>

@@ -1,6 +1,6 @@
 import { CheckCircle2, GitBranch, GitCommitHorizontal, XCircle } from "lucide-react";
 import type { FinalizeResult, QaAuditResult } from "@/lib/types";
-import { LoadingPane, RenderStatusBadge, VercelStatusBadge } from "@/components/viewers/dashboardShared";
+import { LoadingPane } from "@/components/viewers/dashboardShared";
 
 interface ProductionReflectViewProps {
   isFinalizing: boolean;
@@ -63,8 +63,6 @@ export default function ProductionReflectView({
                   <GitBranch size={12} /> {finalizeResult.branch} branch
                 </span>
                 <span>방금 전 배포됨</span>
-                <VercelStatusBadge vercel={finalizeResult.vercel} />
-                <RenderStatusBadge render={finalizeResult.render} />
               </p>
             </div>
           </div>

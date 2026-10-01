@@ -1,7 +1,7 @@
 "use client";
 
 import { useRef, useState } from "react";
-import { FileText, Upload, Download } from "lucide-react";
+import { FileText, Upload } from "lucide-react";
 import clsx from "clsx";
 
 interface UploadDropzoneProps {
@@ -72,15 +72,6 @@ export default function UploadDropzone({
             {errorMessage}
           </p>
         )}
-
-        <a
-          href="/sample-plan.txt"
-          download
-          className="mt-5 inline-flex items-center gap-1.5 text-xs font-medium text-gray-400 hover:text-gray-600"
-        >
-          <Download size={13} />
-          샘플 기획서 템플릿 다운로드
-        </a>
       </div>
     </div>
   );
