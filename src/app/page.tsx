@@ -49,6 +49,55 @@ const MAX_AUTO_FIX_ROUNDS = 3;
 const MAX_GATEWAY_RETRY_ROUNDS = 5;
 const GATEWAY_RETRY_DELAY_MS = 3000;
 
+const COMMIT_ATTEMPTS = 3;
+const COMMIT_RETRY_DELAY_MS = 2000;
+
+/**
+ * Commits a QA-passed result to the `test` branch via /api/test-commit,
+ * retrying a few times since a failure there is almost always a transient
+ * GitHub/network blip, not something wrong with the (already passed) QA
+ * result. If it still fails, returns that same QA result as a blocked one —
+ * with the infra cause spelled out — rather than discarding it.
+ */
+async function commitAfterQa(
+  planFileName: string,
+  qaResult: TestReflectResult
+): Promise<TestReflectResult> {
+  let message = "알 수 없는 오류가 발생했습니다.";
+  for (let attempt = 0; attempt < COMMIT_ATTEMPTS; attempt++) {
+    try {
+      const res = await fetch("/api/test-commit", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ planFileName, files: qaResult.files }),
+      });
+      const data = await parseJsonResponse<
+        { commitSha: string; branch: string; repoUrl: string } | { error: string }
+      >(res);
+      if (!res.ok || "error" in data) {
+        throw new Error("error" in data ? data.error : "커밋 요청에 실패했습니다.");
+      }
+      return {
+        ...qaResult,
+        ok: true,
+        commitSha: data.commitSha,
+        branch: data.branch,
+        repoUrl: data.repoUrl,
+      };
+    } catch (err) {
+      if (err instanceof Error) message = err.message;
+      if (attempt < COMMIT_ATTEMPTS - 1) {
+        await new Promise((resolve) => setTimeout(resolve, COMMIT_RETRY_DELAY_MS));
+      }
+    }
+  }
+  return {
+    ...qaResult,
+    ok: false,
+    blockedReason: `독립 QA 모듈의 보안 점검·자동화 테스트는 통과했지만, test 브랜치에 커밋하는 중 GitHub 오류가 발생해 반영이 완료되지 못했습니다. 대부분 일시적인 문제이니 "테스트반영"을 다시 시도해보세요.\n\n${message}`,
+  };
+}
+
 // 테스트뷰어 is a tab inside the step-3 dashboard now, not its own step.
 // Step 3 (테스트반영) and step 4 (최종 반영/운영반영) are separate screens.
 const STEP_META = {
@@ -173,14 +222,17 @@ export default function Home() {
         }
       }
       if (!res!.ok) throw new Error("error" in data ? data.error : "테스트 브랜치 반영 중 오류가 발생했습니다.");
-      const result = data as TestReflectResult;
+      let result = data as TestReflectResult;
+      // /api/test-reflect only runs QA now; committing a passed result is its
+      // own request so the QA LLM call and the commit each get a fresh 60s
+      // serverless budget instead of sharing one.
+      if (result.qaPassed) result = await commitAfterQa(base.planFileName, result);
       setTestReflectResult(result);
-      // /api/test-reflect resolves as soon as the commit succeeds — it no
-      // longer waits for the Vercel/Render redeploy, or generates the 업무
-      // 비즈니스 diagram, inline (stacking either on top of the QA audit call
-      // routinely exceeded Vercel Hobby's 60s function cap). Both happen here
-      // instead, in parallel, merging into the already-shown result so the
-      // loading state stays up until everything is actually done.
+      // Neither request waits for the Vercel/Render redeploy, or generates the
+      // 업무 비즈니스 diagram, inline (stacking either on top of the QA audit
+      // call routinely exceeded Vercel Hobby's 60s function cap). Both happen
+      // here instead, in parallel, merging into the already-shown result so
+      // the loading state stays up until everything is actually done.
       if (result.ok && result.commitSha) {
         await Promise.all([
           pollDeployStatus("test", result.commitSha, (status) => {

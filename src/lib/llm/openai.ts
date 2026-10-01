@@ -45,6 +45,10 @@ export class OpenAiProvider implements LlmProvider {
   async runQaAudit(input: QaAuditInput): Promise<QaAuditOutput> {
     const response = await client().responses.parse({
       model: qaModelId(this.model, OPENAI_MODEL_OPTIONS),
+      // Default reasoning effort made this one call take ~55s in production
+      // logs — nearly the whole 60s serverless budget. The QA prompt already
+      // spells out exactly what to check, so "low" keeps it well inside it.
+      reasoning: { effort: "low" },
       instructions: QA_SYSTEM_PROMPT,
       input: buildQaUserPrompt(input.files, input.projectRules, input.previousFailures),
       text: { format: zodTextFormat(QaAuditSchema, "qa_audit") },

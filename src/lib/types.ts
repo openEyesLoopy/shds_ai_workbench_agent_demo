@@ -231,6 +231,8 @@ export interface DeployStatusResult {
  */
 export interface TestReflectResult {
   ok: boolean;
+  /** Set by /api/test-reflect when QA/SAST passed but nothing is committed yet — the client follows up with /api/test-commit. */
+  qaPassed?: boolean;
   blockedReason?: string;
   qa: QaAuditResult;
   sast: SastResult[];
