@@ -18,7 +18,7 @@ import {
   buildQaUserPrompt,
 } from "./prompts";
 import { AnalyzeCodegenSchema, BusinessDiagramSchema, QaAuditSchema } from "./schemas";
-import { OPENAI_MODEL_OPTIONS, defaultModelId } from "./models";
+import { OPENAI_MODEL_OPTIONS, defaultModelId, qaModelId } from "./models";
 
 const DEFAULT_MODEL = process.env.OPENAI_MODEL ?? defaultModelId(OPENAI_MODEL_OPTIONS);
 
@@ -44,7 +44,7 @@ export class OpenAiProvider implements LlmProvider {
 
   async runQaAudit(input: QaAuditInput): Promise<QaAuditOutput> {
     const response = await client().responses.parse({
-      model: this.model,
+      model: qaModelId(this.model, OPENAI_MODEL_OPTIONS),
       instructions: QA_SYSTEM_PROMPT,
       input: buildQaUserPrompt(input.files, input.projectRules, input.previousFailures),
       text: { format: zodTextFormat(QaAuditSchema, "qa_audit") },

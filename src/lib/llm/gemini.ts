@@ -19,7 +19,7 @@ import {
   buildBusinessDiagramUserPrompt,
   buildQaUserPrompt,
 } from "./prompts";
-import { GEMINI_MODEL_OPTIONS, defaultModelId } from "./models";
+import { GEMINI_MODEL_OPTIONS, defaultModelId, qaModelId } from "./models";
 
 const DEFAULT_MODEL = process.env.GEMINI_MODEL ?? defaultModelId(GEMINI_MODEL_OPTIONS);
 
@@ -54,7 +54,7 @@ export class GeminiProvider implements LlmProvider {
 
   async runQaAudit(input: QaAuditInput): Promise<QaAuditOutput> {
     const response = await client().models.generateContent({
-      model: this.model,
+      model: qaModelId(this.model, GEMINI_MODEL_OPTIONS),
       contents: buildQaUserPrompt(input.files, input.projectRules, input.previousFailures),
       config: {
         systemInstruction: QA_SYSTEM_PROMPT,

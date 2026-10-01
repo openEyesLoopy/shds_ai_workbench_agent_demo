@@ -18,6 +18,24 @@ export function defaultModelId(options: ModelOption[]): string {
   return options.find((o) => o.isDefault)?.id ?? options[0].id;
 }
 
+/**
+ * Model to use for the QA gate's own audit call specifically, as opposed to
+ * the primary analyze/codegen call. The QA gate is a self-contained
+ * PASS/FAIL judgment over a diff (not the main code generation), and
+ * /api/test-reflect runs it synchronously inside one serverless request
+ * capped at 60s — so a mid-tier model that finishes faster is the better
+ * trade there even when the user picked the top tier for codegen quality.
+ * Only ever downgrades: a model the user already set at or below the mid
+ * tier (e.g. they explicitly picked the lightest one) is left alone rather
+ * than forced back up.
+ */
+export function qaModelId(selectedModel: string, options: ModelOption[]): string {
+  const midIndex = Math.floor(options.length / 2);
+  const selectedIndex = options.findIndex((o) => o.id === selectedModel);
+  if (selectedIndex === -1 || selectedIndex >= midIndex) return selectedModel;
+  return options[midIndex].id;
+}
+
 export const CLAUDE_MODEL_OPTIONS: ModelOption[] = [
   { id: "claude-opus-5", label: "Claude Opus 5 (최고 성능 · 높은 비용)", isDefault: true },
   { id: "claude-sonnet-5", label: "Claude Sonnet 5 (균형)" },

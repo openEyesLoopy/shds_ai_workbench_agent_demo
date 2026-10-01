@@ -18,7 +18,7 @@ import {
   buildQaUserPrompt,
 } from "./prompts";
 import { AnalyzeCodegenSchema, BusinessDiagramSchema, QaAuditSchema } from "./schemas";
-import { CLAUDE_MODEL_OPTIONS, defaultModelId } from "./models";
+import { CLAUDE_MODEL_OPTIONS, defaultModelId, qaModelId } from "./models";
 
 const DEFAULT_MODEL = process.env.ANTHROPIC_MODEL ?? defaultModelId(CLAUDE_MODEL_OPTIONS);
 
@@ -45,7 +45,7 @@ export class ClaudeProvider implements LlmProvider {
 
   async runQaAudit(input: QaAuditInput): Promise<QaAuditOutput> {
     const response = await client().messages.parse({
-      model: this.model,
+      model: qaModelId(this.model, CLAUDE_MODEL_OPTIONS),
       max_tokens: 32000,
       system: QA_SYSTEM_PROMPT,
       messages: [
