@@ -14,6 +14,7 @@
     "@octokit/rest": "^22.0.1",
     "@thednp/dommatrix": "^3.1.1",
     "clsx": "^2.1.1",
+    "diff": "^9.0.0",
     "exceljs": "^4.4.0",
     "jspdf": "^4.2.1",
     "jszip": "^3.10.1",

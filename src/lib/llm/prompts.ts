@@ -1,3 +1,4 @@
+import { createPatch } from "diff";
 import type {
   AnalyzeCodegenInput,
   BusinessDiagramInput,
@@ -5,6 +6,23 @@ import type {
   QaPreviousAttempt,
   SourceFile,
 } from "@/lib/types";
+
+/**
+ * Unified diff of a file's BEFORE→AFTER content, context-limited to 3 lines
+ * around each change. Used only for the QA prompt (buildQaUserPrompt) — this
+ * route runs the QA LLM call synchronously inside one serverless request
+ * capped at 60s (see api/test-reflect/route.ts), and sending the *full*
+ * before-content of every changed file on every retry round was inflating
+ * the prompt (and generation time) far beyond what's needed: the model
+ * still gets the complete AFTER content below for accurate judgment/test
+ * authoring, it just no longer has to re-read an entire unchanged file to
+ * find the handful of changed lines itself.
+ */
+function unifiedDiff(path: string, before: string, after: string): string {
+  const patch = createPatch(path, before, after, "", "", { context: 3 });
+  const hunkStart = patch.indexOf("@@");
+  return hunkStart === -1 ? "(변경 없음)" : patch.slice(hunkStart);
+}
 
 /** Renders fetched CLAUDE.md/AGENTS.md/eslint-config-style project rule files as a prompt block, or "" when none exist. */
 function buildProjectRulesBlock(projectRules: SourceFile[]): string {
@@ -177,9 +195,15 @@ export function buildQaUserPrompt(
 ): string {
   const filesBlock = files
     .map((f) => {
-      const before = f.oldContent ?? "(신규 파일, 이전 내용 없음)";
       const after = f.newContent ?? "(삭제된 파일)";
-      return `### ${f.path}\n-- BEFORE --\n\`\`\`\n${before}\n\`\`\`\n-- AFTER --\n\`\`\`\n${after}\n\`\`\``;
+      if (f.oldContent === null) {
+        return `### ${f.path} (신규 파일)\n-- AFTER(전체) --\n\`\`\`\n${after}\n\`\`\``;
+      }
+      if (f.newContent === null) {
+        return `### ${f.path} (삭제된 파일)\n-- BEFORE(삭제 전 전체) --\n\`\`\`\n${f.oldContent}\n\`\`\``;
+      }
+      const diff = unifiedDiff(f.path, f.oldContent, f.newContent);
+      return `### ${f.path}\n-- 변경 DIFF (BEFORE→AFTER, 문맥 3줄, unified diff 형식) --\n\`\`\`diff\n${diff}\n\`\`\`\n-- AFTER(최종 코드 전체 — 판정·테스트 작성 기준) --\n\`\`\`\n${after}\n\`\`\``;
     })
     .join("\n\n");
 
