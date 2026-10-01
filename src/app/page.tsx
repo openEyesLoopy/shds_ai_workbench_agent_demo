@@ -8,7 +8,7 @@ import UploadDropzone from "@/components/UploadDropzone";
 import AnalyzingOverlay from "@/components/AnalyzingOverlay";
 import WorkspaceLayout from "@/components/WorkspaceLayout";
 import { GatewayTimeoutError, parseJsonResponse } from "@/lib/http";
-import { pollDeployStatus } from "@/lib/pollDeployStatus";
+import { describeDeployWait, pollDeployStatus } from "@/lib/pollDeployStatus";
 import LeftInfoPanel from "@/components/panels/LeftInfoPanel";
 import RequirementDiffList from "@/components/viewers/RequirementDiffList";
 import PipelineDashboard from "@/components/viewers/PipelineDashboard";
@@ -73,6 +73,7 @@ export default function Home() {
   const [fixError, setFixError] = useState<string | null>(null);
   const [autoFixRound, setAutoFixRound] = useState(0);
   const [gatewayRetryCount, setGatewayRetryCount] = useState(0);
+  const [deployWaitText, setDeployWaitText] = useState("");
 
   const hasResult = uploadResult !== null;
 
@@ -151,6 +152,7 @@ export default function Home() {
       setTestReflectError(null);
     }
     setGatewayRetryCount(0);
+    setDeployWaitText("");
     try {
       let data: TestReflectResult | { error: string };
       let res: Response;
@@ -182,6 +184,7 @@ export default function Home() {
       if (result.ok && result.commitSha) {
         await Promise.all([
           pollDeployStatus("test", result.commitSha, (status) => {
+            setDeployWaitText(describeDeployWait(status));
             setTestReflectResult((prev) => (prev ? { ...prev, ...status } : prev));
           }),
           fetch("/api/business-diagram", {
@@ -404,7 +407,9 @@ export default function Home() {
             detail={
               gatewayRetryCount > 0
                 ? `서버 응답이 지연되어 자동으로 다시 시도하고 있습니다 (${gatewayRetryCount}/${MAX_GATEWAY_RETRY_ROUNDS}회)... 화면은 그대로 유지되며 계속 기다리면 됩니다.`
-                : "보안 점검·자동화 테스트 통과 후 test 브랜치에 반영하고, Vercel 재기동이 완료될 때까지 기다리고 있습니다."
+                : deployWaitText
+                  ? `test 브랜치 반영 완료 — 재배포 완료를 기다리는 중입니다. ${deployWaitText}`
+                  : "보안 점검·자동화 테스트 통과 후 test 브랜치에 반영하고, Vercel 재기동이 완료될 때까지 기다리고 있습니다."
             }
           />
         )}
